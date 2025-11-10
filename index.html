@@ -1,0 +1,2762 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Control de Baños</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+ <style>
+    
+    body { 
+      font-family: Arial, sans-serif; 
+      margin: 20px; 
+      /* reemplaza fondo neutral por degradado cálido amarillo */
+      background: linear-gradient(180deg, #FFF9E6 0%, #FFF3C4 50%, #FFF8E1 100%);
+      color: #000; /* mantener texto en negro */
+    }
+    select, input, button { margin: 5px; padding: 5px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { 
+      border: 1px solid #ccc; 
+      padding: 8px; 
+      text-align: center; /* Centra todo el texto de la tabla */
+    }
+    th {background-color: #F5F3FF; }
+    .filtros { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    label { font-weight: bold; margin-right: 6px; }
+    .nula { color: #999; }
+    
+    /* Columnas más pequeñas */
+    th:nth-child(5), 
+    td:nth-child(5),
+    th:nth-child(6), 
+    td:nth-child(6),
+    th:nth-child(7), 
+    td:nth-child(7) {
+      width: 8%; /* Hace las columnas más pequeñas */
+    }
+
+    /* Layout de dos columnas: búsqueda | registros */
+    .container {
+      display: flex;
+      gap: 18px;
+      align-items: flex-start;
+    }
+    .search-half,
+    .records-half {
+      min-width: 300px;
+    }
+    /* hacer la columna izquierda más larga */
+    .search-half { flex: 1.6; }    /* más ancho */
+    .records-half { flex: 1; }     /* más estrecho */
+
+    /* Asegura scroll interno si tablas son largas */
+    .search-half .inner {
+      /* ocupar desde la parte visible hasta el final de la ventana */
+      height: calc(100vh - 140px); /* ajustar si la cabecera es más grande o más pequeña */
+      max-height: none;
+      overflow: auto;
+      padding-right: 6px;
+    }
+    .records-half .inner {
+      /* mantener comportamiento anterior o ajustable por separado */
+      max-height: 74vh;
+      overflow: auto;
+      padding-right: 6px;
+    }
+
+    /* Responsive: apila en pantallas pequeñas */
+    @media (max-width: 900px) {
+      .container { flex-direction: column; }
+    }
+
+    /* toast de advertencia */
+    .toast-warning {
+      position: fixed;
+      right: 20px;
+      top: 20px;
+      background: #fff7e6;
+      border-left: 5px solid #ff9f1c;
+      color: #000; /* texto en negro según requisito */
+      padding: 12px 16px;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+      z-index: 9999;
+      font-weight: 600;
+      opacity: 0;
+      transform: translateY(-8px);
+      animation: toastIn 1.18s forwards; /* duración corregida */
+    }
+
+    /* toast persistente para aviso de "faltan 10 minutos" */
+    .toast-info {
+      position: fixed;
+      right: 20px;
+      top: 20px;
+      background: #e8f7ff;
+      border-left: 5px solid #2b9cff;
+      color: #000;
+      padding: 12px 16px;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+      z-index: 9998;
+      font-weight: 600;
+      opacity: 0;
+      transform: translateY(-8px);
+      animation: toastIn 0.4s forwards;
+    }
+
+    /* toast de éxito (verde) */
+    .toast-success {
+      position: fixed;
+      right: 20px;
+      top: 70px;
+      background: #e6ffe6;
+      border-left: 5px solid #2ecc40;
+      color: #000;
+      padding: 12px 16px;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+      z-index: 9999;
+      font-weight: 600;
+      opacity: 0;
+      transform: translateY(-8px);
+      animation: toastIn 1.18s forwards;
+    }
+
+    @keyframes toastIn { to { opacity: 1; transform: translateY(0); } }
+
+    /* temperatura en esquina inferior derecha */
+    .temp-widget {
+      position: fixed;
+      right: 18px;
+      bottom: 12px;
+      background: rgba(255,250,230,0.95);
+      border: 1px solid rgba(0,0,0,0.06);
+      padding: 8px 10px;
+      border-radius: 10px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+      color: #000;
+      font-weight: 600;
+      z-index: 10000;
+      font-size: 14px;
+      display: none; /* se muestra cuando hay dato */
+      /* Actualizar widget temperatura para incluir más datos */
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* Actualizar widget del clima para incluir condición meteorológica */
+    .weather-item.condition {
+      font-size: 18px; /* iconos más grandes */
+    }
+    .weather-data {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      position: relative;
+    }
+
+    .weather-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+    }
+
+/* Settings panel & themes */
+.settings-btn{width:36px;height:36px;border-radius:8px;border:1px solid rgba(0,0,0,0.06);background:linear-gradient(180deg,#fff,#f3f3f3);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px}
+.settings-panel{position:absolute;top:72px;right:18px;z-index:13000;background:linear-gradient(180deg,#fff,#fbfbff);border:1px solid rgba(0,0,0,0.06);padding:10px;border-radius:10px;box-shadow:0 10px 30px rgba(12,30,60,0.08);min-width:220px}
+.settings-title{font-weight:700;font-size:13px;margin-bottom:8px;color:#16315a}
+.swatches{display:flex;gap:8px}
+.swatch{width:40px;height:32px;border-radius:8px;border:2px solid rgba(0,0,0,0.06);cursor:pointer;padding:0;outline:none}
+.swatch.active{box-shadow:0 6px 18px rgba(12,30,60,0.12);transform:translateY(-2px);border-color:rgba(0,0,0,0.12)}
+
+/* Light theme bodies; dark mode keeps priority if body.dark is present */
+body.theme-yellow{background:linear-gradient(180deg,#FFF9E6 0%,#FFF3C4 50%,#FFF8E1 100%)}
+body.theme-blue{background:linear-gradient(180deg,#F0F7FF 0%,#E1F0FF 50%,#F4FAFF 100%)}
+body.theme-green{background:linear-gradient(180deg,#F2FFF6 0%,#E6FFED 50%,#F7FFF9 100%)}
+body.theme-red{background:linear-gradient(180deg,#FFF2F2 0%,#FFE6E6 50%,#FFF6F6 100%)}
+
+/* optional: small accent changes for buttons under each theme */
+body.theme-yellow .dark-btn, body.theme-yellow .game-btn-inline, body.theme-yellow .lang-btn { background:linear-gradient(90deg,#ffd54f,#ffb300); color:#000 }
+body.theme-blue  .dark-btn, body.theme-blue  .game-btn-inline, body.theme-blue  .lang-btn { background:linear-gradient(90deg,#74b9ff,#4f83ff); color:#002043 }
+body.theme-green .dark-btn, body.theme-green .game-btn-inline, body.theme-green .lang-btn { background:linear-gradient(90deg,#8ef5b9,#4ad07a); color:#00321a }
+body.theme-red   .dark-btn, body.theme-red   .game-btn-inline, body.theme-red   .lang-btn { background:linear-gradient(90deg,#ff9ea0,#ff6b6b); color:#2b0000 }
+
+    /* asegurar logo en esquina inferior izquierda, con cursor y visibilidad */
+    .logo-widget {
+      position: fixed;
+      left: 18px;       /* esquina inferior izquierda */
+      bottom: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255,250,230,0.98);
+      border: 1px solid rgba(0,0,0,0.06);
+      padding: 6px 8px;
+      border-radius: 10px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+      z-index: 10001;
+      cursor: pointer; /* indica que es clicable */
+    }
+    .logo-widget img {
+      width: 44px;
+      height: auto;
+      display: block;
+      border-radius: 6px;
+    }
+    .logo-widget a {
+      color: #000;
+      text-decoration: none;
+      font-weight:600;
+      font-size:13px;
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+    }
+
+    /* desplazar ligeramente el temp-widget hacia arriba si el logo ocupa esquina */
+    .temp-widget { right: 18px; bottom: 72px; } /* subir 42px para evitar solapamiento visual */
+
+    /* suggestions dropdown */
+    .suggestions {
+      position: relative;
+    }
+    .suggestions-list {
+      position: absolute;
+      left: 0;
+      top: 40px;
+      width: 100%;
+      max-height: 300px;
+      overflow: auto;
+      background: #fff;
+      border: 1px solid rgba(0,0,0,0.08);
+      border-radius: 6px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+      z-index: 2000;
+    }
+    .suggestion-item {
+      padding: 8px 10px;
+      cursor: pointer;
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .suggestion-item:hover, .suggestion-item.active {
+      background: rgba(0,0,0,0.03);
+    }
+    .suggestion-meta { color: rgba(0,0,0,0.6); font-size: 12px; }
+
+    /* Nuevo: estilos para búsqueda inline más bonita */
+    .search-row {
+      display:flex;
+      gap:12px;
+      align-items:center;
+      width:100%;
+      margin:6px 0 12px 0;
+    }
+    .search-label {
+      font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-weight:700;
+      color:#1e365d;
+      font-size:15px;
+      white-space:nowrap;
+      padding:6px 10px;
+      border-radius:8px;
+      background: linear-gradient(180deg,#f4f7fb,#eef4ff);
+      border:1px solid rgba(33,50,90,0.06);
+      box-shadow: 0 2px 8px rgba(16,24,40,0.04);
+    }
+    .search-input-wrap {
+      position:relative;
+      flex:1;
+      min-width:180px;
+    }
+    .search-input {
+      width:100%;
+      padding:10px 40px 10px 12px;
+      border-radius:10px;
+      border:1px solid rgba(0,0,0,0.08);
+      font-size:14px;
+      box-shadow: 0 6px 18px rgba(16,24,40,0.04);
+      background: linear-gradient(180deg,#ffffff,#fbfdff);
+    }
+    .search-input:focus {
+      outline: none;
+      border-color: #8fb1ff;
+      box-shadow: 0 8px 26px rgba(43,102,255,0.08);
+    }
+    .search-icon {
+      position:absolute;
+      right:10px;
+      top:50%;
+      transform:translateY(-50%);
+      width:28px;
+      height:28px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      border-radius:6px;
+      color:#2b3a67;
+      background: linear-gradient(180deg,#f5f8ff,#eef4ff);
+      border:1px solid rgba(33,50,90,0.04);
+      font-size:14px;
+      pointer-events:none;
+    }
+    /* Ajustar el dropdown respecto al nuevo wrapper */
+    .search-input-wrap .suggestions-list {
+      top: calc(100% + 8px);
+      left: 0;
+      width: 100%;
+      max-height: 280px;
+    }
+    .suggestion-item { padding: 10px 12px; border-bottom:1px solid rgba(0,0,0,0.03); }
+    .suggestion-item .suggestion-name { font-weight:600; color:#0f2546; }
+    .suggestion-item .suggestion-meta { color: rgba(0,0,0,0.45); font-size:12px; }
+    body.dark .search-label { background: linear-gradient(180deg,#121212,#151515); color:#e6f0ff; border-color: rgba(255,255,255,0.03); }
+    body.dark .search-input { background: #0f1113; color:#fff; border-color: rgba(255,255,255,0.04); box-shadow:none; }
+    body.dark .search-icon { background: rgba(255,255,255,0.03); color:#cfe5ff; border-color: rgba(255,255,255,0.04); }
+
+    /* Indicador conexión */
+    .conn-indicator {
+      position: fixed;
+      left: 18px;
+      bottom: 72px;
+      z-index: 11000;
+      display:inline-flex;
+      gap:8px;
+      align-items:center;
+      background: rgba(255,255,255,0.9);
+      padding:6px 8px;
+      border-radius:8px;
+      border:1px solid rgba(0,0,0,0.06);
+      font-weight:600;
+      color:#000;
+    }
+
+    /* Modo oscuro */
+    body.dark {
+      background: linear-gradient(180deg,#1f1f1f 0%, #111 100%);
+      color: #eee;
+    }
+    body.dark .card { background: #161616; border-color: rgba(255,255,255,0.04); }
+    body.dark .temp-widget, body.dark .logo-widget, body.dark .conn-indicator { background: rgba(20,20,20,0.9); color:#fff; border-color: rgba(255,255,255,0.04); }
+    body.dark .suggestions-list { background:#121212; color:#eee; border-color: rgba(255,255,255,0.04); }
+
+    /* asegurar que los encabezados se mantengan en color oscuro incluso en modo oscuro */
+    body.dark thead th,
+    body.dark table thead th {
+      color: #000 !important;
+    }
+
+    /* compact table font */
+    table { font-size: 13px; }
+
+    /* ocultar el checkbox grande del form (se usa el botón pequeño) */
+    #darkToggle { display: none !important; }
+
+    /* botón pequeño modo oscuro: mover a la esquina inferior derecha (junto a widgets) */
+    .dark-btn {
+      position: fixed;
+      right: 18px;      /* moved to bottom-right */
+      bottom: 72px;     /* slightly above widgets container */
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      border: 1px solid rgba(0,0,0,0.08);
+      background: linear-gradient(90deg,#ffd54f,#ffb300);
+      color: #000;
+      font-size: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 12002;
+      cursor: pointer;
+      box-shadow: 0 6px 14px rgba(0,0,0,0.06);
+    }
+
+    /* Mejorar visibilidad de registros */
+    #histTabla tr:nth-child(even) {
+      background: rgba(255,255,255,0.4);
+    }
+    
+    #histTabla td {
+      padding: 12px 8px;
+      font-size: 14px;
+    }
+
+    /* Reemplazar los estilos del panel de estadísticas */
+.stats-panel {
+  background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,255,255,0.95));
+  padding: 18px;
+  border-radius: 14px;
+  box-shadow: 0 4px 16px rgba(16,24,40,0.06);
+  border: 1px solid rgba(0,0,0,0.04);
+  margin-top: 20px;
+}
+
+.stats-header {
+  font-family: "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1e365d;
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid rgba(33,50,90,0.08);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stat-item {
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.7);
+  border-radius: 10px;
+  margin-bottom: 8px;
+  border: 1px solid rgba(0,0,0,0.03);
+}
+
+.stat-label {
+  font-size: 13px;
+  color: #555;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stat-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: #16315a;
+}
+
+.lectiva-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0,0,0,0.04);
+}
+
+.lectiva-label {
+  font-weight: 600;
+  color: #1e365d;
+  font-size: 14px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lectiva-bar {
+  height: 12px;
+  background: rgba(0,0,0,0.04);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.lectiva-bar > .fill {
+  height: 100%;
+  background: linear-gradient(90deg,#4f83ff,#2b66c4);
+  width: 0%;
+  transition: width 0.6s linear;
+}
+
+/* Modo oscuro */
+body.dark .stats-panel {
+  background: linear-gradient(180deg, rgba(30,30,30,0.98), rgba(25,25,25,0.95));
+  border-color: rgba(255,255,255,0.04);
+}
+body.dark .stats-header { 
+  color: #dcecff;
+  border-bottom-color: rgba(255,255,255,0.06);
+}
+body.dark .stat-item {
+  background: rgba(255,255,255,0.03);
+  border-color: rgba(255,255,255,0.04);
+}
+body.dark .stat-label { color: #aaa; }
+body.dark .stat-value { color: #fff; }
+body.dark .lectiva-section { border-top-color: rgba(255,255,255,0.04); }
+body.dark .lectiva-label { color: #cfe5ff; }
+body.dark .lectiva-bar { background: rgba(255,255,255,0.06); }
+body.dark .lectiva-bar > .fill { background: linear-gradient(90deg,#4f83ff,#2b66c4); }
+
+    /* Elegancia tipográfica para títulos */
+    .app-title {
+      font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-weight: 800;
+      font-size: 28px;                /* aumentado */
+      line-height: 1.1;
+      color: #1e365d;
+      margin: 0 0 14px 0;
+      letter-spacing: 0.6px;
+      text-rendering: optimizeLegibility;
+      text-shadow: 0 1px 0 rgba(255,255,255,0.4); /* sutil relieve */
+    }
+    
+    .section-title {
+      font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-weight: 700;
+      font-size: 18px;                /* aumentado */
+      color: #21325a;
+      margin: 14px 0 10px 0;
+      display: inline-block;
+      padding: 6px 0 8px 0;
+      border-bottom: 3px solid rgba(33,50,90,0.08);
+      letter-spacing: 0.3px;
+      text-transform: none;
+    }
+    
+    /* Ajustes para modo oscuro */
+    body.dark .app-title { color: #dcecff; text-shadow: none; }
+    body.dark .section-title { color: #cfe5ff; border-bottom-color: rgba(255,255,255,0.06); }
+
+    /* Responsive: títulos más pequeños en pantallas estrechas */
+    @media (max-width: 600px) {
+      .app-title { font-size: 20px; letter-spacing: 0.3px; }
+      .section-title { font-size: 15px; border-bottom-width: 2px; }
+    }
+
+    /* dentro de <style>: añadir mejoras visuales y reglas para líneas separadas */
+.card {
+  background: rgba(255,255,255,0.92);
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 6px 20px rgba(16,24,40,0.06);
+  border: 1px solid rgba(0,0,0,0.04);
+}
+body.dark .card { background: #121212; border-color: rgba(255,255,255,0.03); box-shadow: none; }
+
+/* botones más elegantes */
+button {
+  background: linear-gradient(180deg,#fff,#f3f3f3);
+  border: 1px solid rgba(0,0,0,0.08);
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+button:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0,0,0,0.06); }
+
+/* estilo de encabezados por líneas */
+.app-title .line,
+.section-title .line {
+  display:block;
+  line-height:1.05;
+}
+.app-title .line + .line { margin-top:4px; font-weight:700; }
+
+/* acentos para section-title en versiones compactas */
+.section-title {
+  padding-bottom: 8px;
+  border-bottom: 3px solid rgba(33,50,90,0.06);
+}
+
+/* mayor contraste en encabezados de tabla */
+#histTabla thead th, #tabla thead th {
+  background: linear-gradient(180deg,#f7f8fb,#f1f3fb);
+  color: #16315a;
+  font-weight:700;
+  padding:12px 8px;
+  border-bottom: 2px solid rgba(0,0,0,0.04);
+}
+
+/* Añadir estilos para la etiqueta de la barra lectiva */
+.lectiva-label {
+  font-weight: 700;
+  color: #1e365d;
+  font-size: 14px;
+  margin-bottom: 6px;
+  display: block;
+}
+body.dark .lectiva-label { color: #cfe5ff; }
+
+/* Añadir/actualizar estilos (mismos que en experimental.html) */
+.widgets-container {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  z-index: 12000;
+  padding: 8px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.86), rgba(255,255,255,0.94));
+  border-radius: 14px;
+  border: 1px solid rgba(0,0,0,0.06);
+  box-shadow: 0 10px 30px rgba(12,30,60,0.08);
+  backdrop-filter: blur(6px);
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.widgets-container:hover { transform: translateY(-4px); box-shadow: 0 18px 40px rgba(12,30,60,0.12); }
+
+.widget {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:8px 12px;
+  border-radius:10px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(250,250,250,0.95));
+  border: 1px solid rgba(0,0,0,0.04);
+  cursor:default;
+  transition: transform .14s ease, box-shadow .14s ease, background .14s ease;
+}
+.widget:hover { transform: translateY(-3px); box-shadow: 0 8px 22px rgba(0,0,0,0.08); }
+
+.widgets-container .temp-widget { position: static; right:auto; bottom:auto; background:transparent; padding:0; color:inherit; }
+.widgets-container .temp-value { font-weight:700; color: transparent; background: linear-gradient(90deg,#4f83ff,#2b66c4); -webkit-background-clip:text; -webkit-text-fill-color:transparent; font-size:15px; }
+
+/* Cardones logo */
+.cardones-img { width:36px; height:36px; border-radius:8px; object-fit:cover; transition: transform .18s ease; }
+.cardones-widget:hover .cardones-img { transform:scale(1.06); box-shadow: 0 8px 18px rgba(12,30,60,0.12); }
+
+/* Dark mode adjustments */
+body.dark .widgets-container { background: linear-gradient(180deg, rgba(20,20,20,0.9), rgba(16,16,16,0.95)); border-color: rgba(255,255,255,0.06); }
+body.dark .widget { background: linear-gradient(180deg, rgba(30,30,30,0.9), rgba(24,24,24,0.92)); border-color: rgba(255,255,255,0.06); }
+body.dark .temp-value { background: linear-gradient(90deg,#74b9ff,#4f83ff); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+
+/* Añadir estilos para selector de idioma y pequeños ajustes visuales */
+.lang-selector {
+  display:inline-flex;
+  gap:6px;
+  align-items:center;
+  margin-left:10px;
+}
+.lang-btn {
+  width:34px;
+  height:28px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:6px;
+  border:1px solid rgba(0,0,0,0.06);
+  background:linear-gradient(180deg,#fff,#f3f3f3);
+  cursor:pointer;
+  font-size:16px;
+  transition:transform .12s, box-shadow .12s;
+}
+.lang-btn:hover { transform:translateY(-2px); box-shadow:0 6px 14px rgba(0,0,0,0.06); }
+body.dark .lang-btn { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.06); color:#fff; }
+
+    /* Añadir estilos para mini-pestaña de gráficas */
+.mini-charts {
+  margin-top: 10px;
+  padding: 8px;
+  background: linear-gradient(180deg, rgba(250,250,250,0.98), rgba(245,245,250,0.95));
+  border: 1px solid rgba(0,0,0,0.04);
+  border-radius: 10px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap:wrap;
+}
+.mini-charts .controls { display:flex; gap:8px; align-items:center; }
+.mini-charts canvas { width:320px !important; height:160px !important; background:transparent; }
+
+/* override para situar los controles en la cabecera */
+.top-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Botón de juego inline (al lado de idiomas) */
+.game-btn-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid rgba(0,0,0,0.06);
+  background: linear-gradient(90deg,#ffd54f,#ffb300);
+  cursor: pointer;
+  font-size: 16px;
+  color: #000;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+}
+
+/* Forzar que el botón de modo oscuro quede inline (sobrescribe posicionamiento anterior) */
+.dark-btn {
+  position: static !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: auto;
+}
+
+/* ---------- */
+</style>
+</head>
+<body>
+  <h2 class="app-title">
+    <span class="line">Control de alumnos</span>
+    <span class="line">en el baño</span>
+  </h2>
+
+  <!-- cabecera: mover botones inline (reemplazar el div existente con estilo inline) -->
+  <div class="top-controls">
+    <div id="settingsWrap" style="display:inline-flex;align-items:center;gap:8px;">
+  <button id="settingsBtn" class="settings-btn" aria-expanded="false" title="Ajustes visuales">⚙️</button>
+  <div id="settingsPanel" class="settings-panel" role="dialog" aria-hidden="true" style="display:none;">
+    <div class="settings-title">Color modo claro</div>
+    <div class="swatches" role="list">
+      <button class="swatch" data-theme="yellow" title="Amarillo" aria-label="Amarillo" style="background:linear-gradient(180deg,#fff9e6,#fff3c4)"></button>
+      <button class="swatch" data-theme="blue"   title="Azul"     aria-label="Azul"     style="background:linear-gradient(180deg,#e8f2ff,#d9e9ff)"></button>
+      <button class="swatch" data-theme="green"  title="Verde"    aria-label="Verde"    style="background:linear-gradient(180deg,#e9fff0,#d8ffe0)"></button>
+      <button class="swatch" data-theme="red"    title="Rojo"     aria-label="Rojo"     style="background:linear-gradient(180deg,#fff0f0,#ffdede)"></button>
+    </div>
+  </div>
+</div>
+    <button id="darkBtn" class="dark-btn" title="Modo oscuro" aria-pressed="false">🌙</button>
+    <button id="gameBtn" class="game-btn-inline" title="Jugar Torres de Hanoi" aria-label="Jugar">🎮</button>
+    <div id="langSelector" class="lang-selector" title="Idioma">
+      <button class="lang-btn" data-lang="ES" aria-label="Español">🇪🇸</button>
+      <button class="lang-btn" data-lang="EN" aria-label="English">🇬🇧</button>
+      <button class="lang-btn" data-lang="IT" aria-label="Italiano">🇮🇹</button>
+      <button class="lang-btn" data-lang="RU" aria-label="Русский">🇷🇺</button>
+      <button class="lang-btn" data-lang="FR" aria-label="Français">🇫🇷</button>
+      <button class="lang-btn" data-lang="DE" aria-label="Deutsch">🇩🇪</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="search-half card">
+      <div class="inner">
+        <!-- Subir archivo  -->
+        <h3 class="section-title">
+          <span class="line">Cargar lista</span>
+          <span class="line">de alumnos</span>
+        </h3>
+        <input type="file" id="fileInput" accept=".csv">
+
+        <!-- Buscador: ahora la etiqueta está al lado del input -->
+        <div class="search-row" aria-label="Buscar alumno">
+          <div class="search-label" id="labelBuscar">Buscar alumno</div>
+          <div class="search-input-wrap suggestions" style="width:100%;">
+            <input class="search-input" type="text" id="busqueda" placeholder="Escribe nombre o apellido..." aria-labelledby="labelBuscar" />
+            <div class="search-icon">🔎</div>
+            <div id="suggestionsList" class="suggestions-list" style="display:none;"></div>
+          </div>
+        </div>
+        <div class="filtros">
+          <div>
+            <label for="curso">Curso</label>
+            <select id="curso">
+              <option value="">--Todos los cursos--</option>
+              <option value="1ESO">1º ESO</option>
+              <option value="2ESO">2º ESO</option>
+              <option value="3ESO">3º ESO</option>
+              <option value="4ESO">4º ESO</option>
+              <option value="1BACH">1º Bachillerato</option>
+              <option value="2BACH">2º Bachillerato</option>
+            </select>
+          </div>
+          <div>
+            <label for="grupo">Grupo</label>
+            <select id="grupo" disabled>
+              <option value="">--Todos los grupos--</option>
+            </select>
+          </div>
+          <div>
+            <button id="btn-descargar">⬇️ Descargar historial CSV</button>
+          </div>
+        </div>
+
+        <!-- Resultados -->
+        <table id="tabla">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Curso</th>
+              <th>Grupo</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- En records-section: añadir filtros avanzados, estadísticas, modo maestro y backup -->
+    <div class="records-half card">
+      <div class="inner">
+        <h3 class="section-title">Registros de baño</h3>
+
+        <!-- FILTROS AVANZADOS -->
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+          <label>Filtrar historial:</label>
+          <input type="date" id="histFecha">
+          <input type="text" id="histAlumno" placeholder="Alumno (nombre)..." style="min-width:160px;">
+          <select id="histCurso">
+            <option value="">--Todos cursos--</option>
+            <option value="1ESO">1ESO</option>
+            <option value="2ESO">2ESO</option>
+            <option value="3ESO">3ESO</option>
+            <option value="4ESO">4ESO</option>
+            <option value="1BACH">1BACH</option>
+            <option value="2BACH">2BACH</option>
+          </select>
+          <button id="btnFiltrarHist">Aplicar</button>
+          <button id="btnLimpiarHist">Limpiar</button>
+          <!-- Eliminado Modo Maestro UI: ahora las acciones están siempre disponibles -->
+          <div style="margin-left:auto; display:flex; gap:6px; align-items:center;">
+            <input type="file" id="importFile" accept=".csv,.json" style="display:none;">
+            <button id="btnImport" onclick="document.getElementById('importFile').click()">📥 Importar Registros</button>
+            <button id="btnClearAll" class="btn-danger" title="Limpiar todo el historial">Limpiar todo</button>
+            <input type="checkbox" id="darkToggle" style="display:none;">
+          </div>
+        </div>
+
+        <!-- Tabla historial -->
+        <div style="overflow:auto;">
+          <table id="histTabla">
+            <thead>
+              <tr>
+                <th>Fecha</th><th>Nombre</th><th>Curso</th><th>Grupo</th><th>Hora exacta</th><th>Hora lectiva</th><th>Veces hoy</th><th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="histBody"></tbody>
+          </table>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-panel" id="statsPanel" aria-live="polite">
+          <div class="stats-header" id="statsHeader">📊 Estadísticas de hoy</div>
+          
+          <div class="stat-item">
+            <div class="stat-label" id="labelTotales">🚻 <span id="labelTotalesText">Total de visitas</span></div>
+            <div class="stat-value" id="statTotales">—</div>
+          </div>
+
+          <div class="stat-item">
+            <div class="stat-label" id="labelUnique">🧑‍🤝‍🧑 <span id="labelUniqueText">Alumnos únicos hoy</span></div>
+            <div class="stat-value" id="statUnique">—</div>
+          </div>
+
+          <div class="stat-item">
+            <div class="stat-label" id="labelBusiest">⏰ <span id="labelBusiestText">Hora más concurrida</span></div>
+            <div class="stat-value" id="statBusiest">—</div>
+          </div>
+
+          <div class="stat-item">
+            <div class="stat-label" id="labelLast">📝 <span id="labelLastText">Último registro</span></div>
+            <div class="stat-value" id="statLast">—</div>
+          </div>
+
+          <div class="stat-item">
+            <div class="stat-label" id="labelTop">👥 <span id="labelTopText">Top alumnos</span></div>
+            <div class="stat-value" id="statTop">—</div>
+          </div>
+
+          <div class="stat-item">
+            <div class="stat-label" id="labelProm">📈 <span id="labelPromText">Promedio por curso (sobre total hoy)</span></div>
+            <div class="stat-value" id="statProm">—</div>
+          </div>
+
+          <div class="stat-item">
+            <div class="stat-label" id="labelTopGroup">🏆 <span id="labelTopGroupText">Grupo más activo (por curso)</span></div>
+            <div class="stat-value" id="statTopGroup">—</div>
+          </div>
+
+          <div class="stat-item">
+            <div class="stat-label" id="labelAvgPerStudent">📊 <span id="labelAvgPerStudentText">Promedio visitas por alumno (hoy)</span></div>
+            <div class="stat-value" id="statAvgPerStudent">—</div>
+          </div>
+
+          <!-- Nuevas métricas analíticas / derivadas -->
+          <div class="stat-item">
+            <div class="stat-label" id="labelTrend7d">📈 <span id="labelTrend7dText">Tendencia 7 días</span></div>
+            <div class="stat-value" id="statTrend7d">—</div>
+          </div>
+
+          <div class="stat-item">
+            <div class="stat-label" id="labelMA7">🔁 <span id="labelMA7Text">Media móvil 7d</span></div>
+            <div class="stat-value" id="statMA7">—</div>
+          </div>
+
+          <div class="stat-item">
+            <div class="stat-label" id="labelStdCourse">σ <span id="labelStdCourseText">Desv. estándar por curso</span></div>
+            <div class="stat-value" id="statStdCourse">—</div>
+          </div>
+
+          <div class="stat-item">
+            <div class="stat-label" id="labelPeakHourCourse">🕒 <span id="labelPeakHourCourseText">Peak hour por curso</span></div>
+            <div class="stat-value" id="statPeakHourCourse">—</div>
+          </div>
+
+          <div class="stat-item">
+            <div class="stat-label" id="labelLectivaRatio">📘 <span id="labelLectivaRatioText">Ratio lectiva / total</span></div>
+            <div class="stat-value" id="statLectivaRatio">—</div>
+          </div>
+
+          <div class="stat-item">
+            <div class="stat-label" id="labelVisitsPerRegistered">🔢 <span id="labelVisitsPerRegisteredText">Visitas / alumno registrado</span></div>
+            <div class="stat-value" id="statVisitsPerRegistered">—</div>
+          </div>
+
+          <div class="stat-item">
+            <div class="stat-label" id="labelSpeed">🌐 <span id="labelSpeedText">Velocidad Internet</span></div>
+            <div class="stat-value" id="statSpeed">—</div>
+          </div>
+        </div>
+
+        <!-- Mini-pestaña de gráficas -->
+        <div class="mini-charts" id="miniCharts">
+          <div class="controls" style="flex:1;">
+            <label for="chartMetric">Métrica</label>
+            <select id="chartMetric">
+              <option value="visits_by_course">Visitas por curso</option>
+              <option value="visits_by_course_pct">Visitas por curso (% del total)</option>
+              <option value="visits_by_group">Visitas por grupo</option>
+              <option value="visits_by_hour">Visitas por hora (exacta)</option>
+              <option value="visits_over_time">Visitas por intervalo (minutos)</option>
+              <option value="top_students">Top alumnos</option>
+              <option value="weekly_evolution">Evolución semanal</option>
+              <option value="monthly_evolution">Evolución mensual</option>
+              <option value="visits_combined">Visitas por hora y curso</option>
+              <option value="average_analysis">Análisis de promedios</option>
+            </select>
+            <label for="chartType">Tipo</label>
+            <select id="chartType">
+              <option value="bar">Barras</option>
+              <option value="line">Línea</option>
+              <option value="scatter">Puntos</option>
+              <option value="pie">Tarta</option>
+              <option value="doughnut">Rosca</option>
+              <option value="radar">Radar</option>
+            </select>
+            <button id="btnRenderChart">Generar</button>
+            <button id="btnDownloadExcel">Descargar Excel</button>
+          </div>
+          <canvas id="miniChart"></canvas>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- widgets unificados (temperatura, logo, conexión) -->
+  <div class="widgets-container" aria-hidden="false">
+    <div class="widget cardones-widget" id="logoWidget">
+      <a id="logoLink" href="https://www3.gobiernodecanarias.org/medusa/edublog/iesloscardones/" target="_blank" rel="noopener">
+        <img id="logoImg" class="cardones-img" src="logotipo-los-cardones-2-removebg-preview.png" alt="IES Los Cardones" onerror="this.outerHTML='<div class=&#39;fallback-logo&#39;>LC</div>'">
+      </a>
+    </div>
+
+    <div class="widget online-widget" id="connIndicator" role="status" aria-live="polite">
+      <span class="online-dot">●</span>
+      <span id="connText">online</span>
+    </div>
+
+    <div class="widget temp-widget" id="tempWidget">
+      <div class="weather-data">
+        <div class="weather-item condition">
+          <span class="condition-icon">⏳</span>
+        </div>
+        <div class="weather-item">
+          <span>🌡️</span>
+          <span class="temp-value">--</span>
+        </div>
+        <div class="weather-item">
+          <span>💧</span>
+          <span class="humidity-value">--</span>
+        </div>
+        <div class="weather-item">
+          <span>💨</span>
+          <span class="wind-value">--</span>
+        </div>
+      </div>
+      <a id="tempMapLink" href="https://www.google.com/maps?q=28.06975,-16.56328" target="_blank" rel="noopener">Ver</a>
+    </div>
+  </div>
+
+  <script>
+    // ---------- Datos y configuración ----------
+    let alumnos = [];
+    let contadorBaños = {};
+    let fechaUltima = new Date().toDateString(); // para reinicio diario
+
+    // historial persistente en localStorage
+    let historialRegistros = JSON.parse(localStorage.getItem("historialRegistros") || "[]") || [];
+
+    // si quieres que el CSV se descargue automáticamente al registrar, pon true (no recomendado)
+    const descargarAutomatico = false;
+
+    const gruposPorCurso = {
+      "1ESO": ["A","B","C","D","E","F","G"],
+      "2ESO": ["A","B","C","D","E","F","G"],
+      "3ESO": ["A","B","C","D","E","F"],
+      "4ESO": ["A","B","C","D","E","F"],
+      "1BACH": ["A","B","C","D"],
+      "2BACH": ["A","B","C"]
+    };
+
+    const horariosLectivos = [
+      { hora: "1ª hora", inicio: "08:00", fin: "08:55" },
+      { hora: "2ª hora", inicio: "08:55", fin: "09:50" },
+      { hora: "3ª hora", inicio: "09:50", fin: "10:45" },
+      { hora: "4ª hora", inicio: "11:15", fin: "12:10" },
+      { hora: "5ª hora", inicio: "12:10", fin: "13:05" },
+      { hora: "6ª hora", inicio: "13:05", fin: "14:00" }
+    ];
+
+    // ---------- Funciones de utilidad ----------
+    function verificarCambioDeDia() {
+      const hoy = new Date().toDateString();
+      if (hoy !== fechaUltima) {
+        contadorBaños = {};
+        fechaUltima = hoy;
+        // si quieres limpiar la vista diaria:
+        // document.getElementById("registrosBody").innerHTML = "";
+      }
+    }
+
+    function convertirHora(horaStr, referenciaDate) {
+      const [h, m] = horaStr.split(":").map(Number);
+      const d = new Date(referenciaDate);
+      d.setHours(h, m, 0, 0);
+      return d;
+    }
+
+    function fechaEnEspanolConDia(date) {
+      const opciones = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+      const str = date.toLocaleDateString('es-ES', opciones);
+      return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    function escapeHtml(text) {
+      return String(text).replace(/[&<>"']/g, function(m) {
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];
+      });
+    }
+
+    function escapeJs(text) {
+      return String(text).replace(/'/g, "\\'");
+    }
+
+    // ---------- Persistencia y CSV ----------
+    function guardarHistorialLocal() {
+      localStorage.setItem("historialRegistros", JSON.stringify(historialRegistros));
+    }
+
+    // Añade al principio (más reciente arriba), guarda y refresca la vista/estadísticas
+    function anadirHistorial(reg) {
+      historialRegistros.unshift(reg); // poner más reciente al inicio
+      guardarHistorialLocal();
+      // renderizar nuevamente (actualiza también las estadísticas)
+      renderHistorial(historialRegistros);
+      if (descargarAutomatico) descargarHistorialCSV();
+    }
+
+    function descargarHistorialCSV() {
+      if (historialRegistros.length === 0) {
+        // usar traducción si existe
+        alert(translations[currentLang].noRecords || "No hay registros para descargar.");
+        return;
+      }
+      const encabezados = ["Fecha","Nombre","Curso","Grupo","HoraExacta","HoraLectiva","VecesHoy"];
+      const filas = historialRegistros.map(r =>
+        encabezados.map(h => {
+          const v = r[h] ?? "";
+          return `"${String(v).replace(/"/g, '""')}"`;
+        }).join(",")
+      );
+      const contenido = [encabezados.join(","), ...filas].join("\n");
+      const blob = new Blob([contenido], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `historial_baños_${new Date().toISOString().slice(0,10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      // toast de éxito al descargar
+      const msg = translations[currentLang].downloadSuccess || "Descarga completada correctamente.";
+      const toast = document.createElement('div');
+      toast.className = 'toast-success';
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 420);
+      }, 1600);
+    }
+
+    // ---------- Carga CSV de alumnos ----------
+    document.getElementById("fileInput").addEventListener("change", function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: function(results) {
+          alumnos = results.data.map(r => ({
+            Nombre: (r.Nombre || r.nombre || r.Name || r.name || "").trim(),
+            Curso: (r.Curso || r.curso || r.COURSE || "").trim(),
+            Grupo: (r.Grupo || r.grupo || r.GrupoClase || r.group || "").trim()
+          }));
+          mostrar(alumnos);
+        }
+      });
+    });
+
+    // ---------- Listeners UI ----------
+    document.getElementById("busqueda").addEventListener("input", filtrar);
+    // Backup button may be implemented elsewhere; hook Clear All
+    document.getElementById('btnClearAll').addEventListener('click', clearAllRecords);
+    document.getElementById("curso").addEventListener("change", function() {
+      actualizarOpcionesGrupo();
+      filtrar();
+    });
+    document.getElementById("grupo").addEventListener("change", filtrar);
+    document.getElementById("btn-descargar").addEventListener("click", descargarHistorialCSV);
+
+    // ---------- UI helpers ----------
+    function actualizarOpcionesGrupo() {
+      const curso = document.getElementById("curso").value;
+      const selectGrupo = document.getElementById("grupo");
+      selectGrupo.innerHTML = '<option value="">--Todos los grupos--</option>';
+      if (!curso || !gruposPorCurso[curso]) {
+        selectGrupo.disabled = true;
+        return;
+      }
+      gruposPorCurso[curso].forEach(g => {
+        const opt = document.createElement("option");
+        opt.value = g;
+        opt.textContent = g;
+        selectGrupo.appendChild(opt);
+      });
+      selectGrupo.disabled = false;
+    }
+
+    function filtrar() {
+      verificarCambioDeDia();
+      // normaliza texto para ignorar tildes
+      const texto = document.getElementById("busqueda").value
+        .toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const curso = document.getElementById("curso").value;
+      const grupo = document.getElementById("grupo").value;
+      const filtrados = alumnos.filter(a => {
+        // normaliza nombre para ignorar tildes
+        const nombre = (a.Nombre || "")
+          .toLowerCase()
+          .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        return (!texto || nombre.includes(texto)) &&
+               (!curso || a.Curso === curso) &&
+               (!grupo || a.Grupo === grupo);
+      });
+      mostrar(filtrados);
+    }
+
+    function mostrar(lista) {
+      const tablaBody = document.querySelector("#tabla tbody");
+      tablaBody.innerHTML = "";
+      lista.forEach(a => {
+        const fila = document.createElement("tr");
+        fila.innerHTML = `
+          <td>${escapeHtml(a.Nombre)}</td>
+          <td>${escapeHtml(a.Curso)}</td>
+          <td>${escapeHtml(a.Grupo)}</td>
+          <td><button onclick="registrarBaño('${escapeJs(a.Nombre)}', '${escapeJs(a.Curso)}', '${escapeJs(a.Grupo)}')">🚻 Marcar baño</button></td>
+        `;
+        tablaBody.appendChild(fila);
+      });
+    }
+
+    // ---------- Registro de baño ----------
+    function registrarBaño(nombre, curso, grupo) {
+      verificarCambioDeDia();
+      const ahora = new Date();
+      const horaActual = ahora.toTimeString().slice(0,5);
+      const fechaHoyCadena = fechaEnEspanolConDia(ahora);
+
+      // construir clave de hora local (año-mes-dia-hora) para detectar repetidos en la misma hora
+      const hourKey = `${ahora.getFullYear()}-${ahora.getMonth()+1}-${ahora.getDate()}-${ahora.getHours()}`;
+      const clave = `${nombre}-${curso}-${grupo}`;
+
+      if (ultimoRegistroHora[clave] === hourKey) {
+        showWarning(`${nombre} ya estuvo en el baño a esta hora.`);
+        return;
+      }
+      
+      ultimoRegistroHora[clave] = hourKey;
+
+      let horaLectiva = "❌ Nula";
+      for (const h of horariosLectivos) {
+        const inicio = convertirHora(h.inicio, ahora);
+        const fin = convertirHora(h.fin, ahora);
+        if (ahora >= inicio && ahora < fin) {
+          horaLectiva = h.hora;
+          break;
+        }
+      }
+
+      const claveContador = `${nombre}-${curso}-${grupo}`;
+      if (!contadorBaños[claveContador]) {
+        contadorBaños[claveContador] = 0;
+      }
+      if (horaLectiva !== "❌ Nula") {
+        contadorBaños[claveContador]++;
+      }
+
+      const registro = {
+        Fecha: fechaHoyCadena,
+        FechaISO: new Date().toISOString(), // <-- nueva propiedad ISO
+        Nombre: nombre,
+        Curso: curso,
+        Grupo: grupo,
+        HoraExacta: horaActual,
+        HoraLectiva: horaLectiva,
+        VecesHoy: contadorBaños[claveContador] || 0
+      };
+
+      // Añadir al historial usando la función central (unshift + render)
+      anadirHistorial(registro);
+
+      // Mostrar toast de confirmación
+      const toast = document.createElement('div');
+      toast.className = 'toast-success';
+      toast.textContent = `✅ Registrado: ${nombre}`;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+      }, 2000);
+    }
+
+    // nuevo: mapa para almacenar la última hora de registro por alumno
+    let ultimoRegistroHora = {};
+
+    // nuevo: estado para aviso próximo (10 minutos) con timer
+    let upcomingWarning = { index: null, element: null, targetStart: null, timerId: null };
+
+    // helper: obtiene la hora lectiva para una fecha (devuelve {index:1.., name} o null)
+    function getHoraLectiva(date) {
+      for (let i = 0; i < horariosLectivos.length; i++) {
+        const h = horariosLectivos[i];
+        const inicio = convertirHora(h.inicio, date);
+        const fin = convertirHora(h.fin, date);
+        if (date >= inicio && date < fin) {
+          return { index: i + 1, name: h.hora };
+        }
+      }
+      return null;
+    }
+
+    // muestra notificación breve (advertencia) — texto ya SIN paréntesis
+    function showWarning(msg, timeout = 4500) {
+      const div = document.createElement('div');
+      div.className = 'toast-warning';
+      div.textContent = msg;
+      document.body.appendChild(div);
+      setTimeout(() => {
+        div.style.transition = 'opacity .2s, transform .2s';
+        div.style.opacity = '0';
+        div.style.transform = 'translateY(-8px)';
+        setTimeout(() => div.remove(), 220);
+      }, timeout);
+    }
+
+    // muestra notificación persistente tipo "faltan X minutos" y comienza timer de actualización
+    function showUpcoming(msg, targetStart, targetIndex) {
+      removeUpcomingWarning(); // limpia si había otra
+      const div = document.createElement('div');
+      div.className = 'toast-info';
+      div.textContent = msg;
+      document.body.appendChild(div);
+      upcomingWarning.element = div;
+      upcomingWarning.targetStart = targetStart;
+      upcomingWarning.index = targetIndex;
+      startUpcomingTimer();
+    }
+
+    // elimina la notificación persistente si existe (y detiene timer)
+    function removeUpcomingWarning() {
+      if (upcomingWarning.timerId) {
+        clearInterval(upcomingWarning.timerId);
+        upcomingWarning.timerId = null;
+      }
+      if (upcomingWarning.element) {
+        upcomingWarning.element.remove();
+        upcomingWarning.element = null;
+      }
+      upcomingWarning.index = null;
+      upcomingWarning.targetStart = null;
+    }
+
+    // actualiza el texto del aviso cada segundo; elimina cuando llega la hora
+    function startUpcomingTimer() {
+      if (upcomingWarning.timerId) clearInterval(upcomingWarning.timerId);
+      function update() {
+        if (!upcomingWarning.element || !upcomingWarning.targetStart) return removeUpcomingWarning();
+        const now = new Date();
+        const diff = upcomingWarning.targetStart - now;
+        // si ya llegó o estamos en la lectiva objetivo, quitar aviso
+        const current = getHoraLectiva(now);
+        if (diff <= 0 || (current && current.index === upcomingWarning.index)) {
+          return removeUpcomingWarning();
+        }
+        const minutos = Math.floor(diff / 60000);
+        const segundos = Math.floor((diff % 60000) / 1000);
+        upcomingWarning.element.textContent = `Quedan ${minutos}m ${segundos}s para pasar a ${upcomingWarning.index}ª hora`;
+      }
+      update();
+      upcomingWarning.timerId = setInterval(update, 1000);
+    }
+
+    // chequea periódicamente si faltan <=10 minutos para alguna hora lectiva próxima
+    function checkUpcomingLectiva() {
+      const ahora = new Date();
+      const currentLectiva = getHoraLectiva(ahora);
+      // si ya estamos en la hora objetivo, quitar aviso
+      if (currentLectiva && upcomingWarning.index === currentLectiva.index) {
+        removeUpcomingWarning();
+        return;
+      }
+
+      // buscar la siguiente hora cuyo inicio esté en (0, 10min]
+      for (let i = 0; i < horariosLectivos.length; i++) {
+        const h = horariosLectivos[i];
+        const inicio = convertirHora(h.inicio, ahora);
+        const diff = inicio - ahora;
+        if (diff > 0 && diff <= 10 * 60 * 1000) {
+          const targetIndex = i + 1;
+          // si ya mostramos el aviso para esta hora, mantenerlo
+          if (upcomingWarning.index === targetIndex) return;
+          const minutos = Math.ceil(diff / 60000);
+          const msg = `Quedan ${minutos} minutos para pasar a ${targetIndex}ª hora`;
+          showUpcoming(msg, inicio, targetIndex);
+          return;
+        }
+      }
+
+      // si no hay ninguna próxima en <=10min, eliminar aviso
+      removeUpcomingWarning();
+    }
+
+    // lanzar el chequeo de avisos cada 30 segundos (y una comprobación inmediata)
+    function startUpcomingChecker() {
+      checkUpcomingLectiva();
+      setInterval(checkUpcomingLectiva, 30 * 1000);
+    }
+
+    // Inicializar vista con historial cargado (opcional: mostrar últimos N registros)
+    (function inicializar() {
+      // si quieres rellenar la tabla de registros con historial existente, descomenta:
+      // historialRegistros.forEach(r => {
+      //   const fila = document.createElement("tr");
+      //   const claseNula = r.HoraLectiva === "❌ Nula" ? "nula" : "";
+      //   fila.innerHTML = `
+      //     <td>${escapeHtml(r.Fecha)}</td>
+      //     <td>${escapeHtml(r.Nombre)}</td>
+      //     <td>${escapeHtml(r.Curso)}</td>
+      //     <td>${escapeHtml(r.Grupo)}</td>
+      //     <td>${escapeHtml(r.HoraExacta)}</td>
+      //     <td class="${claseNula}">${escapeHtml(r.HoraLectiva)}</td>
+      //     <td>${escapeHtml(r.VecesHoy)}</td>
+      //   `;
+      //   document.getElementById("registrosBody").appendChild(fila);
+      // });
+
+      // Si prefieres restaurar contador del día actual desde historial:
+      try {
+        const hoy = new Date().toDateString();
+        historialRegistros.forEach(r => {
+          // intentar detectar fecha en r.Fecha transformable a Date
+          const parsed = new Date(r.Fecha);
+          if (!isNaN(parsed) && parsed.toDateString() === hoy) {
+            const clave = `${r.Nombre}-${r.Curso}-${r.Grupo}`;
+            contadorBaños[clave] = Math.max(contadorBaños[clave] || 0, Number(r.VecesHoy || 0));
+          }
+        });
+      } catch (e) {
+        // noop
+      }
+
+      // iniciar comprobación de aviso 10 minutos antes
+      startUpcomingChecker();
+    })();
+
+    // Coordenadas en decimal para wttr.in / Google Maps
+    const LAT = 28.06975;
+    const LON = -16.56328;
+    const WTTR_URL = `https://wttr.in/${LAT},${LON}?format=%t|%h|%w|%C`; // formato: "temp|humidity|wind"
+
+    // Mapeo de condiciones a iconos
+    const weatherIcons = {
+      'Clear': '☀️',
+      'Sunny': '☀️',
+      'Partly cloudy': '⛅',
+      'Cloudy': '☁️',
+      'Overcast': '☁️',
+      'Mist': '🌫️',
+      'Fog': '🌫️',
+      'Light rain': '🌦️',
+      'Patchy rain': '🌦️',
+      'Rain': '🌧️',
+      'Heavy rain': '🌧️',
+      'Thunderstorm': '⛈️',
+      'Thunder': '⛈️',
+      'Storm': '🌪️',
+      'Snow': '🌨️',
+      'default': '🌥️'
+    };
+
+    function getWeatherIcon(condition) {
+      return weatherIcons[condition] || weatherIcons.default;
+    }
+
+    function updateTemperatureDisplay(weatherData) {
+      const el = document.getElementById('tempWidget');
+      const [temp, humidity, wind, condition] = (weatherData || '--|--|--|--').split('|');
+      el.querySelector('.temp-value').textContent = temp || '--';
+      el.querySelector('.humidity-value').textContent = humidity || '--';
+      el.querySelector('.wind-value').textContent = wind || '--';
+      el.querySelector('.condition-icon').textContent = getWeatherIcon(condition);
+      const link = document.getElementById('tempMapLink');
+      link.href = `https://www.google.com/maps?q=${LAT},${LON}`;
+      el.style.display = 'inline-block';
+      el.setAttribute('aria-hidden', 'false');
+    }
+
+    function fetchTemperature() {
+      fetch(WTTR_URL)
+        .then(res => {
+          if (!res.ok) throw new Error('no data');
+          return res.text();
+        })
+        .then(txt => updateTemperatureDisplay(txt.trim()))
+        .catch(() => {
+          // silenciar errores de red
+          // updateTemperatureDisplay('--|--|--');
+        });
+    }
+
+    // Actualizar inicialmente y cada 20 minutos
+    fetchTemperature();
+    setInterval(fetchTemperature, 20 * 60 * 1000);
+ 
+    // --- Internet speed test + mini-gráficas (Chart.js dinámico) ---
+    let chartState = { chart: null, data: null };
+    async function ensureChartLib() {
+      if (window.Chart) return;
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+    async function measureSpeed() {
+      try {
+        const url = 'https://upload.wikimedia.org/wikipedia/commons/3/3f/Fronalpstock_big.jpg';
+        const t0 = performance.now();
+        const res = await fetch(url + '?r=' + Date.now(), { cache: 'no-store' });
+        const blob = await res.blob();
+        const t1 = performance.now();
+        const bytes = blob.size || 100000;
+        const secs = Math.max(0.05, (t1 - t0) / 1000);
+        const Mbps = ((bytes * 8) / (secs * 1024 * 1024)).toFixed(2);
+        document.getElementById('statSpeed').textContent = `${Mbps} Mbps`;
+      } catch (e) {
+        document.getElementById('statSpeed').textContent = 'N/A';
+      }
+    }
+    measureSpeed(); setInterval(measureSpeed, 30 * 1000);
+    function buildChartDataset(metric) {
+      const hoy = new Date().toDateString();
+      const registrosHoy = (historialRegistros || []).filter(r => {
+        if (r.FechaISO) { const d = new Date(r.FechaISO); if (!isNaN(d)) return d.toDateString() === hoy; }
+        const p = new Date(r.Fecha); if (!isNaN(p)) return p.toDateString() === hoy;
+        return false;
+      });
+      if (metric === 'visits_by_course') {
+        const map = {};
+        registrosHoy.forEach(r => map[r.Curso = r.Curso || '—'] = (map[r.Curso]||0)+1);
+        return { labels: Object.keys(map), values: Object.values(map) };
+      } else if (metric === 'visits_by_course_pct') {
+        const map = {};
+        registrosHoy.forEach(r => map[r.Curso = r.Curso || '—'] = (map[r.Curso]||0)+1);
+        const total = registrosHoy.length || 1;
+        const labels = Object.keys(map);
+        const values = labels.map(l => ((map[l] / total) * 100).toFixed(1));
+        return { labels, values };
+      } else if (metric === 'visits_by_group') {
+        const map = {};
+        registrosHoy.forEach(r => {
+          const grp = (r.Grupo || '—');
+          map[grp] = (map[grp] || 0) + 1;
+        });
+        return { labels: Object.keys(map), values: Object.values(map) };
+      } else if (metric === 'visits_by_hour' || metric === 'visits_over_time') {
+        const map = {};
+        registrosHoy.forEach(r => {
+          const h = (r.HoraExacta || '').slice(0,5) || '—';
+          map[h] = (map[h] || 0) + 1;
+        });
+        const labels = Object.keys(map).sort();
+        return { labels, values: labels.map(l=>map[l]) };
+      } else if (metric === 'top_students') {
+        const map = {};
+        registrosHoy.forEach(r => {
+          const name = (r.Nombre || '—');
+          map[name] = (map[name] || 0) + 1;
+        });
+        const arr = Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,12);
+        return { labels: arr.map(x=>x[0]), values: arr.map(x=>x[1]) };
+      } else if (metric === 'weekly_evolution') {
+        // Agrupar por día de la semana
+        const last7days = {};
+        const now = new Date();
+        for(let i=0; i<7; i++) {
+          const d = new Date(now);
+          d.setDate(d.getDate() - i);
+          last7days[d.toISOString().slice(0,10)] = 0;
+        }
+        
+        historialRegistros.forEach(r => {
+          const date = new Date(r.FechaISO || r.Fecha);
+          if (!isNaN(date)) {
+            const key = date.toISOString().slice(0,10);
+            if (key in last7days) {
+              last7days[key]++;
+            }
+          }
+        });
+        
+        return {
+          labels: Object.keys(last7days).reverse(),
+          values: Object.values(last7days).reverse()
+        };
+
+      } else if (metric === 'monthly_evolution') {
+        // Agrupar por mes
+        const monthMap = {};
+        historialRegistros.forEach(r => {
+          const date = new Date(r.FechaISO || r.Fecha);
+          if (!isNaN(date)) {
+            const key = date.toISOString().slice(0,7); // YYYY-MM
+            monthMap[key] = (monthMap[key] || 0) + 1;
+          }
+        });
+        const sorted = Object.entries(monthMap).sort().slice(-6); // últimos 6 meses
+        return {
+          labels: sorted.map(([m]) => m),
+          values: sorted.map(([,v]) => v)
+        };
+
+      } else if (metric === 'visits_combined') {
+        // Análisis multidimensional: hora x curso x cantidad
+        const combined = {};
+        historialRegistros.forEach(r => {
+          const hora = r.HoraExacta?.slice(0,2) || '00';
+          const curso = r.Curso || 'N/A';
+          const key = `${hora}h - ${curso}`;
+          combined[key] = (combined[key] || 0) + 1;
+        });
+        
+        return {
+          labels: Object.keys(combined),
+          values: Object.values(combined),
+          type: 'matrix'
+        };
+
+      } else if (metric === 'average_analysis') {
+        // Promedios por diferentes métricas
+        const stats = {
+          porHora: {},
+          porCurso: {},
+          porDia: {}
+        };
+        
+        historialRegistros.forEach(r => {
+          const hora = r.HoraExacta?.slice(0,2) || '00';
+          const curso = r.Curso || 'N/A';
+          const fecha = new Date(r.FechaISO || r.Fecha);
+          
+          if (!isNaN(fecha)) {
+            const dia = fecha.toISOString().slice(0,10);
+            stats.porHora[hora] = (stats.porHora[hora] || 0) + 1;
+            stats.porCurso[curso] = (stats.porCurso[curso] || 0) + 1;
+            stats.porDia[dia] = (stats.porDia[dia] || 0) + 1;
+          }
+        });
+        
+        // Calcular promedios
+        const avgPorHora = Object.values(stats.porHora).reduce((a,b) => a + b, 0) / Object.keys(stats.porHora).length;
+        const avgPorCurso = Object.values(stats.porCurso).reduce((a,b) => a + b, 0) / Object.keys(stats.porCurso).length;
+        const avgPorDia = Object.values(stats.porDia).reduce((a,b) => a + b, 0) / Object.keys(stats.porDia).length;
+        
+        return {
+          labels: ['Por hora', 'Por curso', 'Por día'],
+          values: [avgPorHora, avgPorCurso, avgPorDia]
+        };
+      }
+      return { labels: [], values: [] };
+    }
+    async function renderMiniChart() {
+      await ensureChartLib();
+      const metric = document.getElementById('chartMetric').value;
+      const type = document.getElementById('chartType').value;
+      const ds = buildChartDataset(metric);
+      chartState.data = { metric, ds };
+      if (chartState.chart) chartState.chart.destroy();
+      const ctx = document.getElementById('miniChart').getContext('2d');
+      const cfg = {
+        type: ds.type === 'matrix' ? 'bar' : (type === 'scatter' ? 'scatter' : type),
+        data: {
+          labels: ds.labels,
+          datasets: [{
+            label: metric,
+            data: type === 'scatter' ? 
+              ds.labels.map((l,i) => ({x:i, y:ds.values[i]})) : 
+              ds.values,
+            backgroundColor: ds.type === 'matrix' ?
+              ds.values.map(v => `rgba(79,131,255,${Math.min(0.3 + v/10, 0.9)})`) :
+              'rgba(79,131,255,0.8)',
+            borderColor: 'rgba(43,102,196,0.9)',
+            pointRadius: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            x: { 
+              ticks: {
+                autoSkip: true,
+                maxTicksLimit: ds.type === 'matrix' ? 24 : 12,
+                maxRotation: ds.type === 'matrix' ? 45 : 0
+              }
+            },
+            y: { 
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: metric === 'average_analysis' ? 'Promedio de visitas' : 'Número de visitas'
+              }
+            }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: (context) => {
+                  const value = context.parsed.y;
+                  if (metric === 'average_analysis') {
+                    return `Promedio: ${value.toFixed(2)} visitas`;
+                  }
+                  return `${value} visitas`;
+                }
+              }
+            }
+          }
+        }
+      };
+      
+      chartState.chart = new Chart(ctx, cfg);
+    }
+    function downloadChartDataExcel() {
+      if (!chartState.data) { alert('Genera primero una gráfica'); return; }
+      const { ds } = chartState.data; let csv='label,value\n'; for (let i=0;i<ds.labels.length;i++) csv+=`"${String(ds.labels[i]).replace(/"/g,'""')}",${ds.values[i]}\n`;
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' }); const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+      a.download=`grafica_${chartState.data.metric}_${new Date().toISOString().slice(0,10)}.csv`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+    }
+    document.getElementById('btnRenderChart').addEventListener('click', renderMiniChart);
+    document.getElementById('btnDownloadExcel').addEventListener('click', downloadChartDataExcel);
+ 
+    // ---------- i18n básico ----------
+    const translations = {
+      ES: {
+        title1: "Control de alumnos",
+        title2: "en el baño",
+        uploadTitle1: "Cargar lista",
+        uploadTitle2: "de alumnos",
+        searchLabel: "Buscar alumno",
+        searchPlaceholder: "Escribe nombre o apellido...",
+       
+        cursoLabel: "Curso",
+        grupoLabel: "Grupo",
+        downloadBtn: "⬇️ Descargar historial CSV",
+        filterLabel: "Filtrar historial:",
+        histAlumnoPlaceholder: "Alumno (nombre)...",
+        applyBtn: "Aplicar",
+        clearBtn: "Limpiar",
+        backupBtn: "Hacer backup",
+        clearAllBtn: "Limpiar todo",
+        recordsTitle: "Registros de baño",
+        table_headers_tabla: ["Nombre","Curso","Grupo","Acción"],
+        table_headers_hist: ["Fecha","Nombre","Curso","Grupo","Hora exacta","Hora lectiva","Veces hoy","Acciones"],
+        statsHeader: "📊 Estadísticas de hoy",
+        downloadSuccess: "Descarga completada correctamente.",
+        noRecords: "No hay registros para descargar.",
+        onlineText: "online",
+        tempLink: "Ver",
+        importBtn: "📥 Importar Registros",
+        importSuccess: "✅ Importados %n registros",
+        importError: "❌ Error al importar: %s",
+        importInvalid: "Por favor selecciona un archivo .csv o .json",
+        stats: {
+          visits: "visitas",
+          students: "alumnos",
+          busiestHour: "Hora más concurrida",
+          lastRecord: "Último registro",
+          topStudents: "Top alumnos",
+          avgByCourse: "Promedio por curso (sobre total hoy)",
+          activeGroup: "Grupo más activo (por curso)",
+          avgPerStudent: "Promedio visitas por alumno (hoy)",
+          noData: "Sin datos",
+          times: "veces",
+          time: "vez",
+          trend7dLabel: "Tendencia 7 días",
+          ma7Label: "Media móvil 7d",
+          stdCourseLabel: "Desv. estándar por curso",
+          peakHourCourseLabel: "Peak hour por curso",
+          lectivaRatioLabel: "Ratio lectiva/total",
+          visitsPerRegLabel: "Visitas / alumno registrado"
+        }
+      },
+      EN: {
+        title1: "Student control",
+        title2: "in the restroom",
+        uploadTitle1: "Upload list",
+        uploadTitle2: "of students",
+        searchLabel: "Search student",
+        searchPlaceholder: "Type name or surname...",
+        cursoLabel: "Class",
+        grupoLabel: "Group",
+        downloadBtn: "⬇️ Download history CSV",
+        filterLabel: "Filter history:",
+        histAlumnoPlaceholder: "Student (name)...",
+        applyBtn: "Apply",
+        clearBtn: "Clear",
+        backupBtn: "Backup",
+        clearAllBtn: "Clear all",
+        recordsTitle: "Restroom records",
+        table_headers_tabla: ["Name","Class","Group","Action"],
+        table_headers_hist: ["Date","Name","Class","Group","Exact time","School hour","Times today","Actions"],
+        statsHeader: "📊 Today's stats",
+        downloadSuccess: "Download completed successfully.",
+        noRecords: "No records to download.",
+        onlineText: "online",
+        tempLink: "View",
+        importBtn: "📥 Import Records",
+        importSuccess: "✅ Imported %n records",
+        importError: "❌ Import error: %s",
+               importInvalid: "Please select a .csv or .json file",
+        stats: {
+          visits: "visits",
+          students: "students",
+          busiestHour: "Busiest hour",
+          lastRecord: "Last record",
+          topStudents: "Top students",
+          avgByCourse: "Average by course (today's total)",
+          activeGroup: "Most active group (by course)",
+          avgPerStudent: "Average visits per student (today)",
+          noData: "No data",
+          times: "times",
+          time: "time",
+          trend7dLabel: "7-day trend",
+          ma7Label: "7d moving average",
+          stdCourseLabel: "Std. dev. by course",
+          peakHourCourseLabel: "Peak hour by course",
+          lectivaRatioLabel: "Lectiva/total ratio",
+          visitsPerRegLabel: "Visits / registered student"
+        }
+      },
+      IT: {
+        title1: "Controllo studenti",
+        title2: "in bagno",
+        uploadTitle1: "Carica lista",
+        uploadTitle2: "studenti",
+        searchLabel: "Cerca studente",
+        searchPlaceholder: "Digita nome o cognome...",
+        cursoLabel: "Classe",
+        grupoLabel: "Gruppo",
+        downloadBtn: "⬇️ Scarica storico CSV",
+        filterLabel: "Filtra storico:",
+        histAlumnoPlaceholder: "Studente (nome)...",
+        applyBtn: "Applica",
+        clearBtn: "Pulisci",
+        backupBtn: "Backup",
+        clearAllBtn: "Cancella tutto",
+        recordsTitle: "Registri bagno",
+        table_headers_tabla: ["Nome","Classe","Gruppo","Azione"],
+        table_headers_hist: ["Data","Nome","Classe","Gruppo","Ora esatta","Ora scolastica","Volte oggi","Azioni"],
+        statsHeader: "📊 Statistiche di oggi",
+        downloadSuccess: "Download completato con successo.",
+        noRecords: "Nessun registro da scaricare.",
+        onlineText: "online",
+        tempLink: "Vedi",
+        importBtn: "📥 Importa Registri",
+        importSuccess: "✅ Importati %n registri",
+        importError: "❌ Errore di importazione: %s",
+        importInvalid: "Seleziona un file .csv o .json",
+        stats: {
+          visits: "visite",
+          students: "studenti",
+          busiestHour: "Ora più frequentata",
+          lastRecord: "Ultimo registro",
+          topStudents: "Top studenti",
+          avgByCourse: "Media per corso (sul totale di oggi)",
+          activeGroup: "Gruppo più attivo (per corso)",
+          avgPerStudent: "Media visite per studente (oggi)",
+          noData: "Nessun dato",
+          times: "volte",
+          time: "volta",
+          trend7dLabel: "Tendenza 7 giorni",
+          ma7Label: "Media mobile 7g",
+          stdCourseLabel: "Dev. standard per corso",
+          peakHourCourseLabel: "Peak hour per corso",
+          lectivaRatioLabel: "Rapporto lectiva/total",
+          visitsPerRegLabel: "Visite / studente registrato"
+        }
+      },
+      RU: {
+        title1: "Контроль учеников",
+        title2: "в туалете",
+        uploadTitle1: "Загрузить список",
+        uploadTitle2: "учеников",
+        searchLabel: "Поиск ученика",
+        searchPlaceholder: "Введите имя или фамилию...",
+        cursoLabel: "Класс",
+        grupoLabel: "Группа",
+        downloadBtn: "⬇️ Скачать историю CSV",
+        filterLabel: "Фильтр истории:",
+        histAlumnoPlaceholder: "Ученик (имя)...",
+        applyBtn: "Применить",
+        clearBtn: "Очистить",
+        backupBtn: "Резервная копия",
+        clearAllBtn: "Удалить всё",
+        recordsTitle: "Записи в туалете",
+        table_headers_tabla: ["Имя","Класс","Группа","Действие"],
+        table_headers_hist: ["Дата","Имя","Класс","Группа","Точное время","Уч. час","Раз сегодня","Действия"],
+        statsHeader: "📊 Статистика за сегодня",
+        downloadSuccess: "Загрузка успешно завершена.",
+        noRecords: "Нет записей для скачивания.",
+        onlineText: "online",
+        tempLink: "Показать",
+        importBtn: "📥 Импорт записей",
+        importSuccess: "✅ Импортировано %n записей",
+        importError: "❌ Ошибка импорта: %s",
+        importInvalid: "Выберите файл .csv или .json",
+        stats: {
+          visits: "посещений",
+          students: "учеников",
+          busiestHour: "Самый загруженный час",
+          lastRecord: "Последняя запись",
+          topStudents: "Топ учеников",
+          avgByCourse: "Среднее по классам (сегодня)",
+          activeGroup: "Самая активная группа (по классам)",
+          avgPerStudent: "Среднее посещений на ученика (сегодня)",
+          noData: "Нет данных",
+          times: "раз",
+          time: "раз",
+          trend7dLabel: "Тенденция 7 дней",
+          ma7Label: "Скользящая средняя 7д",
+          stdCourseLabel: "Ср. отклонение по курсам",
+          peakHourCourseLabel: "Час пик по курсу",
+          lectivaRatioLabel: "Соотношение лективы/итого",
+          visitsPerRegLabel: "Посещения / зарегистрированный ученик"
+        }
+      },
+      FR: {
+        title1: "Contrôle des élèves",
+        title2: "aux toilettes",
+        uploadTitle1: "Charger la liste",
+        uploadTitle2: "des élèves",
+        searchLabel: "Rechercher un élève",
+        searchPlaceholder: "Tapez le nom ou prénom...",
+        cursoLabel: "Classe",
+        grupoLabel: "Groupe",
+        downloadBtn: "⬇️ Télécharger l'historique CSV",
+        filterLabel: "Filtrer l'historique:",
+        histAlumnoPlaceholder: "Élève (nom)...",
+        applyBtn: "Appliquer",
+        clearBtn: "Effacer",
+        clearAllBtn: "Tout effacer",
+        recordsTitle: "Registre des toilettes",
+        table_headers_tabla: ["Nom","Classe","Groupe","Action"],
+        table_headers_hist: ["Date","Nom","Classe","Groupe","Heure exacte","Heure de cours","Fois aujourd'hui","Actions"],
+        statsHeader: "📊 Statistiques du jour",
+        downloadSuccess: "Téléchargement terminé avec succès.",
+        noRecords: "Aucun enregistrement à télécharger.",
+        onlineText: "en ligne",
+        tempLink: "Voir",
+        importBtn: "📥 Importer Registres",
+        importSuccess: "✅ %n registres importés",
+        importError: "❌ Erreur d'importation: %s",
+        importInvalid: "Veuillez sélectionner un fichier .csv ou .json",
+        stats: {
+          visits: "visites",
+          students: "élèves",
+          busiestHour: "Heure la plus fréquentée",
+          lastRecord: "Dernier enregistrement",
+          topStudents: "Top élèves",
+          avgByCourse: "Moyenne par classe (total du jour)",
+          activeGroup: "Groupe le plus actif (par classe)",
+          avgPerStudent: "Moyenne de visites par élève (aujourd'hui)",
+          noData: "Pas de données",
+          times: "fois",
+          time: "fois",
+          trend7dLabel: "Tendance 7 jours",
+          ma7Label: "Moyenne mobile 7j",
+          stdCourseLabel: "Écart type par cours",
+          peakHourCourseLabel: "Heure de pointe par cours",
+          lectivaRatioLabel: "Ratio lectiva/total",
+          visitsPerRegLabel: "Visites / élève enregistré"
+        }
+      },
+
+      DE: {
+        title1: "Schülerkontrolle",
+        title2: "im Badezimmer",
+        uploadTitle1: "Schülerliste",
+        uploadTitle2: "hochladen",
+        searchLabel: "Schüler suchen",
+        searchPlaceholder: "Namen eingeben...",
+        cursoLabel: "Klasse",
+        grupoLabel: "Gruppe",
+        downloadBtn: "⬇️ CSV-Verlauf herunterladen",
+        filterLabel: "Verlauf filtern:",
+        histAlumnoPlaceholder: "Schüler (Name)...",
+        applyBtn: "Anwenden",
+        clearBtn: "Löschen",
+        clearAllBtn: "Alles löschen",
+        recordsTitle: "Badezimmer-Protokolle",
+        table_headers_tabla: ["Name","Klasse","Gruppe","Aktion"],
+        table_headers_hist: ["Datum","Name","Klasse","Gruppe","Genaue Zeit","Schulstunde","Male heute","Aktionen"],
+        statsHeader: "📊 Heutige Statistiken",
+        downloadSuccess: "Download erfolgreich abgeschlossen.",
+        noRecords: "Keine Aufzeichnungen zum Herunterladen.",
+        onlineText: "online",
+        tempLink: "Ansehen",
+        importBtn: "📥 Protokolle importieren",
+        importSuccess: "✅ %n Protokolle importiert",
+        importError: "❌ Importfehler: %s",
+        importInvalid: "Bitte wählen Sie eine .csv oder .json Datei",
+        stats: {
+          visits: "Besuche",
+          students: "Schüler",
+          busiestHour: "Verkehrsreichste Stunde",
+          lastRecord: "Letzter Eintrag",
+          topStudents: "Top-Schüler",
+          avgByCourse: "Durchschnitt pro Klasse (heute gesamt)",
+          activeGroup: "Aktivste Gruppe (pro Klasse)",
+          avgPerStudent: "Durchschnittliche Besuche pro Schüler (heute)",
+          noData: "Keine Daten",
+          times: "mal",
+          time: "mal",
+          trend7dLabel: "Trend der letzten 7 Tage",
+          ma7Label: "7-Tage gleitender Durchschnitt",
+          stdCourseLabel: "Std. Abw. nach Klasse",
+          peakHourCourseLabel: "Hauptverkehrszeit nach Klasse",
+          lectivaRatioLabel: "Verhältnis Lehrveranstaltung/gesamt",
+          visitsPerRegLabel: "Besuche / registrierter Schüler"
+        }
+      }
+    };
+
+    let currentLang = localStorage.getItem('appLang') || 'ES';
+    function applyTranslations(lang) {
+      const t = translations[lang] || translations['ES'];
+      // títulos
+      const lines = document.querySelectorAll('.app-title .line');
+      if (lines[0]) lines[0].textContent = t.title1;
+      if (lines[1]) lines[1].textContent = t.title2;
+      // upload section
+      const uploadLines = document.querySelectorAll('.search-half .section-title .line');
+      if (uploadLines[0]) uploadLines[0].textContent = t.uploadTitle1;
+      if (uploadLines[1]) uploadLines[1].textContent = t.uploadTitle2;
+      // search label & placeholder
+      const lb = document.getElementById('labelBuscar');
+      if (lb) lb.textContent = t.searchLabel;
+      const busq = document.getElementById('busqueda');
+      if (busq) busq.placeholder = t.searchPlaceholder;
+      // curso / grupo labels
+      const cursoLbl = document.querySelector('label[for="curso"]');
+      if (cursoLbl) cursoLbl.textContent = t.cursoLabel;
+      const grupoLbl = document.querySelector('label[for="grupo"]');
+      if (grupoLbl) grupoLbl.textContent = t.grupoLabel;
+      // buttons
+      const btnD = document.getElementById('btn-descargar');
+      if (btnD) btnD.textContent = t.downloadBtn;
+      const btnA = document.getElementById('btnFiltrarHist');
+      if (btnA) btnA.textContent = t.applyBtn;
+      const btnC = document.getElementById('btnLimpiarHist');
+      if (btnC) btnC.textContent = t.clearBtn;
+      const btnB = document.getElementById('btnBackup');
+      if (btnB) btnB.textContent = t.backupBtn;
+      const btnClearAll = document.getElementById('btnClearAll');
+      if (btnClearAll) btnClearAll.textContent = t.clearAllBtn;
+      // records title
+      const recTitle = document.querySelector('.records-half .section-title');
+      if (recTitle) recTitle.textContent = t.recordsTitle;
+      // placeholders
+      const histAlumno = document.getElementById('histAlumno');
+      if (histAlumno) histAlumno.placeholder = t.histAlumnoPlaceholder;
+      // table headers
+      const thTabla = document.querySelectorAll('#tabla thead th');
+      if (thTabla && t.table_headers_tabla) {
+        thTabla.forEach((th,i) => th.textContent = t.table_headers_tabla[i] || th.textContent);
+      }
+      const thHist = document.querySelectorAll('#histTabla thead th');
+      if (thHist && t.table_headers_hist) {
+        thHist.forEach((th,i) => th.textContent = t.table_headers_hist[i] || th.textContent);
+      }
+      // stats header
+      const sh = document.querySelector('.stats-header');
+      if (sh) sh.textContent = t.statsHeader;
+      // online text
+      const conn = document.getElementById('connText');
+      if (conn) conn.textContent = t.onlineText;
+      // temp link
+      const tempLink = document.getElementById('tempMapLink');
+      if (tempLink) tempLink.textContent = t.tempLink;
+      // botón importar
+      const btnImport = document.getElementById('btnImport');
+      if (btnImport) btnImport.textContent = t.importBtn || translations.ES.importBtn;
+
+      // traducción de cada etiqueta de estadística (ID -> texto)
+      const statMap = [
+        ['labelTotalesText','stats.visits'],
+        ['labelUniqueText','stats.students'],
+        ['labelBusiestText','stats.busiestHour'],
+        ['labelLastText','stats.lastRecord'],
+        ['labelTopText','stats.topStudents'],
+        ['labelPromText','stats.avgByCourse'],
+        ['labelTopGroupText','stats.activeGroup'],
+        ['labelAvgPerStudentText','stats.avgPerStudent'],
+        ['labelTrend7dText','stats.trend7dLabel'],
+        ['labelMA7Text','stats.ma7Label'],
+        ['labelStdCourseText','stats.stdCourseLabel'],
+        ['labelPeakHourCourseText','stats.peakHourCourseLabel'],
+        ['labelLectivaRatioText','stats.lectivaRatioLabel'],
+        ['labelVisitsPerRegisteredText','stats.visitsPerRegLabel'],
+        ['labelSpeedText','tempLink']
+      ];
+      statMap.forEach(([id,key])=>{
+        const el = document.getElementById(id);
+        if (!el) return;
+        // resolve nested keys like 'stats.visits'
+        const parts = (key || '').split('.');
+        let val = t;
+        for (const p of parts) { if (val && p in val) val = val[p]; else { val = null; break; } }
+        if (!val) val = (translations.ES && key.startsWith('stats') ? translations.ES.stats[key.split('.').pop()] : key);
+        el.textContent = val;
+      });
+
+      // guardar idioma
+      currentLang = lang;
+      localStorage.setItem('appLang', lang);
+    }
+
+    // conectar botones de idioma
+    document.querySelectorAll('.lang-btn').forEach(b => {
+      b.addEventListener('click', (e) => {
+        applyTranslations(e.currentTarget.dataset.lang || 'ES');
+      });
+    });
+    // aplicar idioma al inicio
+    applyTranslations(currentLang);
+
+    // Debounce helper
+    function debounce(fn, wait = 200) {
+      let t;
+      return (...args) => {
+        clearTimeout(t);
+        t = setTimeout(() => fn.apply(this, args), wait);
+      };
+    }
+
+    // Normaliza texto para comparar (minusculas y sin tildes)
+    function norm(str) {
+      return String(str || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    }
+
+    // Construye y muestra sugerencias debajo del input de busqueda
+    const suggestionsEl = document.getElementById('suggestionsList');
+    let suggestionIndex = -1;
+    function buildSuggestions(query) {
+      suggestionsEl.innerHTML = '';
+      suggestionIndex = -1;
+      if (!query) { suggestionsEl.style.display = 'none'; return; }
+      const q = norm(query);
+      // priorizar startsWith, luego includes
+      const matches = [];
+      for (const a of alumnos) {
+        const n = norm(a.Nombre);
+        if (n.startsWith(q)) matches.push({score:1, a});
+        else if (n.includes(q)) matches.push({score:2, a});
+      }
+      matches.sort((x,y) => x.score - y.score);
+      const top = matches.slice(0, 12);
+      if (top.length === 0) { suggestionsEl.style.display = 'none'; return; }
+      top.forEach((m, idx) => {
+        const item = document.createElement('div');
+        item.className = 'suggestion-item';
+        item.tabIndex = 0;
+        item.dataset.idx = idx;
+        item.innerHTML = `<span class="suggestion-name">${escapeHtml(m.a.Nombre)}</span>
+                          <span class="suggestion-meta">${escapeHtml(m.a.Curso)} ${escapeHtml(m.a.Grupo)}</span>`;
+        item.addEventListener('click', () => {
+          // al hacer click, ejecutar la acción: marcar baño
+          registrarBaño(m.a.Nombre, m.a.Curso, m.a.Grupo);
+          clearSuggestions();
+        });
+        suggestionsEl.appendChild(item);
+      });
+      suggestionsEl.style.display = 'block';
+    }
+
+    function clearSuggestions() {
+      suggestionsEl.innerHTML = '';
+      suggestionsEl.style.display = 'none';
+      suggestionIndex = -1;
+    }
+
+    // manejar navegación por teclado dentro del input de búsqueda
+    const busquedaInput = document.getElementById('busqueda');
+    busquedaInput.addEventListener('keydown', function(e) {
+      const items = suggestionsEl.querySelectorAll('.suggestion-item');
+      if (!items.length) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (suggestionIndex < items.length -  1) suggestionIndex++;
+        updateActiveSuggestion(items);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (suggestionIndex > 0) suggestionIndex--;
+        updateActiveSuggestion(items);
+      } else if (e.key === 'Enter') {
+        if (suggestionIndex >= 0 && suggestionIndex < items.length) {
+          e.preventDefault();
+          items[suggestionIndex].click();
+        }
+      } else if (e.key === 'Escape') {
+        clearSuggestions();
+      }
+    });
+
+    function updateActiveSuggestion(items) {
+      items.forEach(it => it.classList.remove('active'));
+      if (suggestionIndex >= 0 && items[suggestionIndex]) {
+        items[suggestionIndex].classList.add('active');
+        // scroll into view if needed
+        const el = items[suggestionIndex];
+        const r = el.getBoundingClientRect();
+        const p = suggestionsEl.getBoundingClientRect();
+        if (r.top < p.top) el.scrollIntoView({block:'nearest'});
+        if (r.bottom > p.bottom) el.scrollIntoView({block:'nearest'});
+      }
+    }
+
+    // conectar con el filtrado: al escribir actualizamos sugerencias (debounced)
+    const debouncedSuggest = debounce(function() {
+      const q = busquedaInput.value;
+      // mostrar sugerencias únicamente si hay alumnos cargados
+      buildSuggestions(q);
+      // además aplicar el filtrado de la tabla como ahora
+      filtrar();
+    }, 160);
+    busquedaInput.addEventListener('input', debouncedSuggest);
+
+    // cerrar sugerencias si se hace click fuera
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.suggestions')) clearSuggestions();
+    });
+
+    // atajo para enfocar búsqueda con '/'
+    document.addEventListener('keydown', (e) => {
+      if (e.key === '/' && document.activeElement !== busquedaInput) {
+        e.preventDefault();
+        busquedaInput.focus();
+        busquedaInput.select();
+      }
+    });
+
+    // Asegura que el logo abra la página (ya lo hace por href), pero evita errores si falta la imagen:
+    (function initLogoWidget(){
+      const img = document.getElementById('logoImg');
+      const container = document.getElementById('logoWidget');
+      const link = document.getElementById('logoLink');
+      const originalSrc = img.getAttribute('src') || '';
+      let attempts = 0;
+      const maxAttempts = 12;
+      const retryInterval = 1000; // ms
+
+      function tryLoad() {
+        // añadir un query param para evitar caches problemáticos
+        const src = originalSrc + (originalSrc.includes('?') ? '&' : '?') + 'r=' + Date.now();
+        img.src = src;
+      }
+
+      function onError() {
+        attempts++;
+        if (attempts < maxAttempts) {
+          // reintentar después de un intervalo
+          setTimeout(() => {
+            tryLoad();
+          }, retryInterval);
+        } else {
+          // Si tras varios intentos no se carga, mostrar fallback textual/visual pero mantener enlace
+          // Reemplazamos la imagen por un pequeño placeholder SVG inline para que "siempre" haya algo visible
+          const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          svg.setAttribute('width', '44');
+          svg.setAttribute('height', '44');
+          svg.setAttribute('viewBox', '0 0 100 100');
+          svg.innerHTML = '<rect width="100" height="100" rx="12" fill="#ffea8a"/><text x="50%" y="55%" font-size="36" text-anchor="middle" fill="#000" font-family="Arial" font-weight="700">LC</text>';
+          // vaciar el contenido del enlace y añadir SVG + texto accesible
+          link.innerHTML = '';
+          link.appendChild(svg);
+          const span = document.createElement('span');
+          span.textContent = 'IES Los Cardones';
+          span.style.marginLeft = '8px';
+          span.style.fontWeight = '700';
+          link.appendChild(span);
+          // asegurar que el contenedor sigue visible
+          container.style.display = 'inline-flex';
+        }
+      }
+
+      // cuando carga correctamente, aseguramos estilo y detenemos reintentos
+      img.addEventListener('load', () => {
+        // si se cargó bien, dejar como está
+      });
+      img.addEventListener('error', onError);
+
+      // iniciar primer intento
+      tryLoad();
+
+      // permitir que todo el contenedor sea clicable y accesible por teclado
+      container.addEventListener('click', (e) => {
+        if (e.target.tagName.toLowerCase() !== 'a') {
+          link.click();
+        }
+      });
+      container.tabIndex = 0;
+      container.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          link.click();
+        }
+      });
+    })();
+
+    // conectar botón de juego (redirige al index del juego)
+    (function(){
+      const g = document.getElementById('gameBtn');
+      if (g) {
+        g.addEventListener('click', () => {
+          // ruta relativa desde "Aplicacion 1.01" a la carpeta del juego
+          window.location.href = '../Torres de Hanoi/index.html';
+        });
+      }
+    })();
+
+    /* ---------- FILTROS AVANZADOS / HISTORIAL ---------- */
+    document.getElementById('btnFiltrarHist').addEventListener('click', filtrarHistorial);
+    document.getElementById('btnLimpiarHist').addEventListener('click', () => {
+      document.getElementById('histFecha').value = '';
+      document.getElementById('histAlumno').value = '';
+      document.getElementById('histCurso').value = '';
+      renderHistorial(historialRegistros);
+    });
+
+    // renderHistorial: mostrar acciones siempre (editar/borrar sin contraseña)
+    function renderHistorial(list) {
+      const body = document.getElementById('histBody');
+      body.innerHTML = '';
+      list.forEach((r, i) => {
+        const tr = document.createElement('tr');
+        tr.classList.add('visible');
+        tr.innerHTML = `
+          <td>${escapeHtml(r.Fecha)}</td>
+          <td>${escapeHtml(r.Nombre)}</td>
+          <td>${escapeHtml(r.Curso)}</td>
+          <td>${escapeHtml(r.Grupo)}</td>
+          <td>${escapeHtml(r.HoraExacta)}</td>
+          <td>${escapeHtml(r.HoraLectiva)}</td>
+          <td>${escapeHtml(r.VecesHoy)}</td>
+          <td class="acciones-cell">
+            <button onclick="editarRegistro(${i})">✏️</button>
+            <button onclick="borrarRegistro(${i})">🗑️</button>
+          </td>
+        `;
+        body.appendChild(tr);
+        requestAnimationFrame(()=> tr.classList.add('visible'));
+      });
+      computeStats(list);
+    }
+
+    /* filtrarHistorial: aplica filtros por fecha, curso, alumno */
+    function filtrarHistorial() {
+      const fecha = document.getElementById('histFecha').value; // YYYY-MM-DD
+      const alumno = document.getElementById('histAlumno').value.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const curso = document.getElementById('histCurso').value;
+      const filtrados = historialRegistros.filter(r => {
+        let ok = true;
+        if (fecha) {
+          // comparar fecha simple transformando r.Fecha si viene en formato legible
+          const d = new Date(r.Fecha);
+          if (isNaN(d)) {
+            ok = ok && (r.Fecha && r.Fecha.includes(fecha));
+          } else {
+            const iso = d.toISOString().slice(0,10);
+            ok = ok && (iso === fecha);
+          }
+        }
+        if (curso) ok = ok && (r.Curso === curso);
+        if (alumno) {
+          const nombreNorm = (r.Nombre||'').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          ok = ok && nombreNorm.includes(alumno);
+        }
+        return ok;
+      });
+      renderHistorial(filtrados);
+    }
+
+    /* acciones maestro: borrar / editar */
+    function borrarRegistro(index) {
+      if (!confirm('¿Borrar registro?')) return;
+      historialRegistros.splice(index,1);
+      guardarHistorialLocal();
+      renderHistorial(historialRegistros);
+    }
+
+    function editarRegistro(index) {
+      const r = historialRegistros[index];
+      const nuevo = prompt('Editar Hora exacta (HH:MM):', r.HoraExacta);
+      if (nuevo !== null) {
+        r.HoraExacta = nuevo;
+        guardarHistorialLocal();
+        renderHistorial(historialRegistros);
+      }
+    }
+
+    /* ---------- MODO OSCURO: botón funcional y arranque en claro ---------- */
+    const darkBtn = document.getElementById('darkBtn');
+    const darkChk = document.getElementById('darkToggle');
+
+    // Arranque: respetar preferencia guardada en localStorage (persistente)
+    const savedDark = localStorage.getItem('darkMode') === '1';
+    setDarkMode(!!savedDark);
+
+    function setDarkMode(on) {
+      document.body.classList.toggle('dark', !!on);
+      if (darkChk) darkChk.checked = !!on;
+      localStorage.setItem('darkMode', on ? '1' : '0');
+      if (darkBtn) darkBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+
+    // botón pequeño
+    if (darkBtn) {
+      darkBtn.addEventListener('click', () => {
+        const now = !document.body.classList.contains('dark');
+        setDarkMode(now);
+      });
+    }
+    // checkbox (oculto o no) sincroniza con el botón
+    if (darkChk) {
+      darkChk.addEventListener('change', (e) => setDarkMode(e.target.checked));
+      // la preferencia ya se aplica al inicio desde localStorage arriba
+    }
+
+    // asegurarse de que la vista inicial use el historial
+    (function restoreView() {
+      // Si el almacenamiento venía en orden antiguo (más antiguo primero), invertir para mostrar lo más reciente arriba.
+      if (Array.isArray(historialRegistros) && historialRegistros.length > 1) {
+        // Heurístico: si el primer elemento es anterior al último, invertir para mostrar más reciente arriba.
+        try {
+          const firstDate = new Date(historialRegistros[0].Fecha);
+          const lastDate = new Date(historialRegistros[historialRegistros.length - 1].Fecha);
+          if (!isNaN(firstDate) && !isNaN(lastDate) && firstDate < lastDate) {
+            historialRegistros = historialRegistros.reverse();
+          }
+        } catch (e) {
+          // noop
+        }
+      }
+      renderHistorial(historialRegistros);
+    })();
+
+    function computeStats(registros) {
+      const hoy = new Date().toDateString();
+      function esRegistroDeHoy(r) {
+        if (!r) return false;
+        if (r.FechaISO) {
+          const d = new Date(r.FechaISO);
+          if (!isNaN(d)) return d.toDateString() === hoy;
+        }
+        const parsed = new Date(r.Fecha);
+        if (!isNaN(parsed)) return parsed.toDateString() === hoy;
+        const iso = new Date().toISOString().slice(0,10);
+        if (String(r.Fecha || '').includes(iso)) return true;
+        const local = new Date().toLocaleDateString('es-ES');
+        if (String(r.Fecha || '').includes(local)) return true;
+        return false;
+      }
+      const registrosHoy = (registros || []).filter(esRegistroDeHoy);
+
+      // Total visitas
+      const totalVisitas = registrosHoy.length;
+      const tstats = translations[currentLang] && translations[currentLang].stats ? translations[currentLang].stats : translations.ES.stats;
+      document.getElementById('statTotales').textContent = `${totalVisitas} ${tstats.visits}`;
+
+      // Alumnos únicos
+      const nameCounts = {};
+      const nameLastInfo = {};
+      registrosHoy.forEach(r => {
+        const nombre = (r.Nombre || '').trim();
+        const norm = nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        nameCounts[norm] = (nameCounts[norm] || 0) + 1;
+        nameLastInfo[norm] = r;
+      });
+      const uniqueCount = Object.keys(nameCounts).length;
+      document.getElementById('statUnique').textContent = `${uniqueCount} ${tstats.students}`;
+
+      // Top alumnos (>1)
+      const topStudents = Object.entries(nameCounts)
+        .filter(([_, cnt]) => cnt > 1)
+        .sort((a,b) => b[1] - a[1])
+        .slice(0,8)
+        .map(([norm, cnt]) => {
+          const info = nameLastInfo[norm];
+          const label = info ? `${info.Nombre} (${info.Curso}${info.Grupo})` : norm;
+          return `${label}: ${cnt} ${cnt === 1 ? tstats.time : tstats.times}`;
+        });
+      document.getElementById('statTop').textContent = topStudents.length ? topStudents.join(', ') : tstats.noData;
+
+      // Hora más concurrida
+      const lectCounts = {};
+      registrosHoy.forEach(r => {
+        const key = (r.HoraLectiva || '❌ Nula');
+        lectCounts[key] = (lectCounts[key] || 0) + 1;
+      });
+      const entriesLectiva = Object.entries(lectCounts).filter(([k]) => k && k !== '❌ Nula');
+      if (entriesLectiva.length) {
+        entriesLectiva.sort((a,b) => b[1] - a[1]);
+        const [label, cnt] = entriesLectiva[0];
+        document.getElementById('statBusiest').textContent = `${label} — ${cnt} visitas`;
+      } else {
+        document.getElementById('statBusiest').textContent = 'Sin datos';
+      }
+
+      // Último registro
+      const last = registrosHoy[0];
+      document.getElementById('statLast').textContent = last ? `${last.Nombre} — ${last.HoraExacta}` : '—';
+
+      // Promedio por curso (ahora en % respecto al total de visitas hoy) + datos por grupo
+      const courseVisits = {};
+      const groupByCourse = {};
+      registrosHoy.forEach(r => {
+        const curso = r.Curso || 'SinCurso';
+        const grupo = r.Grupo || '—';
+        courseVisits[curso] = (courseVisits[curso] || 0) + 1;
+        groupByCourse[curso] = groupByCourse[curso] || {};
+        groupByCourse[curso][grupo] = (groupByCourse[curso][grupo] || 0) + 1;
+      });
+      const totalVis = totalVisitas || 1;
+      // statProm: porcentaje por curso sobre total hoy
+      const promParts = Object.entries(courseVisits).map(([curso, visitas]) => {
+        const pctCourse = ((visitas / totalVis) * 100).toFixed(1);
+        return `${curso}: ${pctCourse}% (${visitas})`;
+      });
+      document.getElementById('statProm').textContent = promParts.length ? promParts.join(' — ') : 'Sin datos';
+
+      // statTopGroup: para cada curso, indicar grupo más activo
+      const topGroupParts = Object.entries(groupByCourse).map(([curso, groups]) => {
+        const arr = Object.entries(groups).sort((a,b) => b[1] - a[1]);
+        const [g, cnt] = arr[0] || ['—', 0];
+        const pct = ((cnt / (courseVisits[curso]||1)) * 100).toFixed(1);
+        return `${curso}: ${g} (${cnt}, ${pct}%)`;
+      });
+      document.getElementById('statTopGroup').textContent = topGroupParts.length ? topGroupParts.join(' — ') : 'Sin datos';
+
+      // statAvgPerStudent: promedio de visitas por alumno hoy
+      const avgPerStudent = uniqueCount ? (totalVisitas / uniqueCount) : 0;
+      document.getElementById('statAvgPerStudent').textContent = `${avgPerStudent.toFixed(2)} visitas/alumno`;
+
+      // --- Datos históricos: construir últimos N días (para tendencias y MA) ---
+      const daysBack = 30;
+      const countsByDay = {}; // YYYY-MM-DD => count
+      const now = new Date();
+      for (let i=0;i<daysBack;i++){
+        const d = new Date(now);
+        d.setDate(d.getDate()-i);
+        countsByDay[d.toISOString().slice(0,10)] = 0;
+      }
+      historialRegistros.forEach(r=>{
+        const d = new Date(r.FechaISO || r.Fecha);
+        if (!isNaN(d)) {
+          const k = d.toISOString().slice(0,10);
+          if (k in countsByDay) countsByDay[k]++;
+        }
+      });
+      const lastNDates = Object.keys(countsByDay).reverse(); // oldest -> newest
+      const lastNCounts = lastNDates.map(d=>countsByDay[d]);
+
+      // Tendencia (regresión lineal simple sobre últimos 7 días)
+      const last7 = lastNCounts.slice(-7);
+      let trendText = '—';
+      if (last7.length >= 3) {
+        const xs = last7.map((_,i)=>i);
+        const ys = last7;
+        const meanX = xs.reduce((a,b)=>a+b,0)/xs.length;
+        const meanY = ys.reduce((a,b)=>a+b,0)/ys.length;
+        const num = xs.reduce((s,x,i)=> s + (x-meanX)*(ys[i]-meanY), 0);
+        const den = xs.reduce((s,x)=> s + (x-meanX)*(x-meanX), 0) || 1;
+        const slope = num/den;
+        const pct = meanY? (slope/meanY*100).toFixed(2) : '0.00';
+        trendText = `${slope.toFixed(2)} /día (${pct}% sobre media)`;
+      }
+      document.getElementById('statTrend7d').textContent = trendText;
+
+      // Media móvil 7 días (último valor)
+      const ma7 = last7.length ? (last7.reduce((a,b)=>a+b,0)/last7.length).toFixed(2) : '—';
+      document.getElementById('statMA7').textContent = ma7;
+
+      // Desviación estándar por curso (últimos 30 días por curso)
+      const courseDayMap = {}; // curso => {date=>count}
+      const dates30 = Object.keys(countsByDay);
+      historialRegistros.forEach(r=>{
+        const curso = r.Curso || 'SinCurso';
+        const d = new Date(r.FechaISO || r.Fecha);
+        const k = isNaN(d)? (r.Fecha||'') : d.toISOString().slice(0,10);
+        if (!courseDayMap[curso]) courseDayMap[curso] = {};
+        if (k in countsByDay) courseDayMap[curso][k] = (courseDayMap[curso][k]||0) + 1;
+      });
+      const stdParts = [];
+      Object.keys(courseDayMap).forEach(c=>{
+        const arr = dates30.map(d => courseDayMap[c][d] || 0);
+        const mean = arr.reduce((a,b)=>a+b,0)/arr.length;
+        const variance = arr.reduce((s,v)=> s + Math.pow(v-mean,2), 0)/arr.length;
+        const sd = Math.sqrt(variance);
+        stdParts.push(`${c}: ${sd.toFixed(2)}`);
+      });
+      document.getElementById('statStdCourse').textContent = stdParts.length ? stdParts.slice(0,6).join(' — ') : '—';
+
+      // Peak hour por curso (h:00)
+      const peakParts = [];
+      const hourCourse = {}; // curso => hour => cnt
+      historialRegistros.forEach(r=>{
+        const curso = r.Curso || 'SinCurso';
+        const hour = (r.HoraExacta || '00:00').slice(0,2);
+        hourCourse[curso] = hourCourse[curso] || {};
+        hourCourse[curso][hour] = (hourCourse[curso][hour]||0) + 1;
+      });
+      Object.entries(hourCourse).forEach(([c,map])=>{
+        const arr = Object.entries(map).sort((a,b)=>b[1]-a[1]);
+        if (arr.length) peakParts.push(`${c}: ${arr[0][0]}h`);
+      });
+      document.getElementById('statPeakHourCourse').textContent = peakParts.length ? peakParts.slice(0,6).join(' — ') : '—';
+
+      // Ratio lectiva / total
+      const lectivaCount = registrosHoy.filter(r => r.HoraLectiva && r.HoraLectiva !== '❌ Nula').length;
+      const lectRatio = totalVisitas ? ((lectivaCount/totalVisitas)*100).toFixed(1) + '%' : '—';
+      document.getElementById('statLectivaRatio').textContent = lectRatio;
+
+      // Visitas por alumno registrado (alumnos cargados)
+      const registered = alumnos.length || 1;
+      document.getElementById('statVisitsPerRegistered').textContent = (totalVisitas / registered).toFixed(2);
+
+      // --- Actualizar gráfica miniatura si está visible ---
+      const miniCharts = document.getElementById('miniCharts');
+      if (miniCharts && miniCharts.offsetParent !== null) {
+        renderMiniChart();
+      }
+    }
+    
+    // refresco periódico y escucha de storage
+    setInterval(() => { try { computeStats(historialRegistros); } catch(e){} }, 2000);
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'historialRegistros') {
+        historialRegistros = JSON.parse(localStorage.getItem('historialRegistros') || "[]") || [];
+        renderHistorial(historialRegistros);
+        computeStats(historialRegistros);
+      }
+    });
+    /* ---------- Funciones adicionales ---------- */
+    /* añadir la implementación de clearAllRecords (coloca cerca de otras utilidades) */
+function clearAllRecords() {
+  if (!confirm('¿Seguro que quieres borrar TODO el historial de registros? Esta acción no se puede deshacer.')) return;
+  // Limpiar estructuras en memoria
+  historialRegistros = [];
+  contadorBaños = {};
+  ultimoRegistroHora = {};
+  // Limpiar localStorage
+  try {
+    localStorage.removeItem('historialRegistros');
+    localStorage.removeItem('lastBackupDate');
+  } catch (e) {
+    // noop
+  }
+  // Actualizar UI
+  const body = document.getElementById('histBody');
+  if (body) body.innerHTML = '';
+  renderHistorial(historialRegistros);
+  computeStats(historialRegistros);
+  // Toast de éxito
+  const toast = document.createElement('div');
+  toast.className = 'toast-success';
+  toast.textContent = 'Historial borrado correctamente.';
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    setTimeout(() => toast.remove(), 320);
+  }, 1600);
+}
+
+/* Añadir la función de importación en la sección de JavaScript */
+// Añadir después de las funciones de persistencia
+
+function importarRegistros(file) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      let registrosImportados;
+      if (file.name.endsWith('.json')) {
+        registrosImportados = JSON.parse(e.target.result);
+      } else if (file.name.endsWith('.csv')) {
+        // Parsear CSV usando PapaParse
+        const result = Papa.parse(e.target.result, {
+          header: true,
+          skipEmptyLines: true
+        });
+        registrosImportados = result.data;
+      } else {
+        throw new Error('Formato no soportado');
+      }
+
+      if (!Array.isArray(registrosImportados)) {
+        throw new Error('Formato inválido');
+      }
+
+      // Validar y normalizar cada registro
+      registrosImportados = registrosImportados.map(r => ({
+        Fecha: r.Fecha || r.fecha || new Date().toLocaleDateString('es-ES'),
+        FechaISO: r.FechaISO || r.fechaISO || new Date().toISOString(),
+        Nombre: r.Nombre || r.nombre || 'Sin nombre',
+        Curso: r.Curso || r.curso || 'N/A',
+        Grupo: r.Grupo || r.grupo || 'N/A',
+        HoraExacta: r.HoraExacta || r.horaExacta || '00:00',
+        HoraLectiva: r.HoraLectiva || r.horaLectiva || '❌ Nula',
+        VecesHoy: parseInt(r.VecesHoy || r.vecesHoy || '0', 10)
+      }));
+
+      // Añadir al inicio del historial actual
+      historialRegistros.unshift(...registrosImportados);
+      guardarHistorialLocal();
+      renderHistorial(historialRegistros);
+
+      // Mostrar toast de éxito
+      const toast = document.createElement('div');
+      toast.className = 'toast-success';
+      toast.textContent = translations[currentLang].importSuccess.replace('%n', registrosImportados.length);
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+      }, 2000);
+
+    } catch (error) {
+      const toast = document.createElement('div');
+      toast.className = 'toast-warning';
+      toast.textContent = translations[currentLang].importError.replace('%s', error.message);
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+  };
+
+  if (file.name.endsWith('.json') || file.name.endsWith('.csv')) {
+    reader.readAsText(file);
+  } else {
+    alert(translations[currentLang].importInvalid);
+  }
+}
+
+// Conectar el input file para importar
+document.getElementById('importFile').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (file) {
+    importarRegistros(file);
+  }
+  this.value = ''; // Reset para permitir seleccionar el mismo archivo
+});
+
+/* ---------- Settings: aplicar tema claro desde panel de ajustes ---------- */
+(function initSettingsTheme(){
+  const THEMES = ['yellow','blue','green','red'];
+  const storageKey = 'lightTheme';
+  const btn = document.getElementById('settingsBtn');
+  const panel = document.getElementById('settingsPanel');
+  const wrap = document.getElementById('settingsWrap');
+  const swatches = Array.from(document.querySelectorAll('.swatch'));
+
+  function applyTheme(name, save = true) {
+    if (!name) name = 'yellow';
+    THEMES.forEach(t => document.body.classList.remove('theme-' + t));
+    document.body.classList.add('theme-' + name);
+    if (save) localStorage.setItem(storageKey, name);
+    swatches.forEach(s => s.classList.toggle('active', s.dataset.theme === name));
+  }
+
+  // restaurar tema guardado (por defecto 'yellow')
+  try {
+    const saved = localStorage.getItem(storageKey) || 'yellow';
+    applyTheme(saved, false);
+  } catch (e) { /* noop */ }
+
+  // abrir/cerrar panel
+  if (btn && panel) {
+    btn.addEventListener('click', () => {
+      const open = panel.style.display === 'block';
+      panel.style.display = open ? 'none' : 'block';
+      btn.setAttribute('aria-expanded', (!open).toString());
+      panel.setAttribute('aria-hidden', open ? 'true' : 'false');
+    });
+  }
+
+  // seleccionar swatch
+  swatches.forEach(s => {
+    s.addEventListener('click', () => {
+      applyTheme(s.dataset.theme);
+      if (panel) { panel.style.display = 'none'; btn.setAttribute('aria-expanded','false'); }
+    });
+    s.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); s.click(); }
+    });
+  });
+
+  // cerrar panel al hacer click fuera
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#settingsWrap') && panel && panel.style.display === 'block') {
+      panel.style.display = 'none';
+      if (btn) btn.setAttribute('aria-expanded','false');
+    }
+  });
+
+  // ocultar panel cuando se active modo oscuro
+  const obs = new MutationObserver(() => {
+    if (document.body.classList.contains('dark') && panel) {
+      panel.style.display = 'none';
+      if (btn) btn.setAttribute('aria-expanded','false');
+    }
+  });
+  obs.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+})();
+  
+  </script>
+</body>
+</html>
